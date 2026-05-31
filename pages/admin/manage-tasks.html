@@ -118,8 +118,23 @@
       isActive: document.getElementById('taskActive').value === 'true',
     };
     try {
-      if (editingId) { await updateDoc(doc(db, 'tasks', editingId), data); showToast('Task updated!', 'success'); }
-      else { await addDoc(collection(db, 'tasks'), { ...data, createdAt: new Date().toISOString() }); showToast('Task created!', 'success'); }
+      if (editingId) {
+        await updateDoc(doc(db, 'tasks', editingId), data);
+        showToast('Task updated!', 'success');
+        // Notify members about task update
+        if (data.isActive) {
+          const { sendNotificationToAll } = await import('../../js/notifications.js');
+          await sendNotificationToAll(`📌 Task Updated: ${title}`, data.description || 'A task has been updated. Check the site for details.', 'task');
+        }
+      } else {
+        await addDoc(collection(db, 'tasks'), { ...data, createdAt: new Date().toISOString() });
+        showToast('Task created!', 'success');
+        // Notify members about new task
+        if (data.isActive) {
+          const { sendNotificationToAll } = await import('../../js/notifications.js');
+          await sendNotificationToAll(`⚔️ New Task: ${title}`, data.description || 'A new task has been added. Log in to evaluate your peers!', 'task');
+        }
+      }
       closeModal(); loadTasks();
     } catch(e) { showToast('Error saving task', 'error'); }
   };

@@ -108,6 +108,11 @@
     await setDoc(doc(db, 'settings', 'site'), { ...data, announcement: msg });
     showToast(msg ? 'Announcement posted!' : 'Announcement cleared!', 'success');
     loadAnnouncement();
+    // Send push notification to all members
+    if (msg) {
+      const { sendNotificationToAll } = await import('../../js/notifications.js');
+      await sendNotificationToAll("📢 New Announcement", msg, 'announcement');
+    }
   };
 
   window.clearAnnouncement = async function() {

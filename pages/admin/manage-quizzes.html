@@ -116,6 +116,9 @@
     if (!title) { showToast('Quiz title required', 'error'); return; }
     const ref = await addDoc(collection(db, 'quizzes'), { title, timeLimit, questionCount: 0, createdAt: new Date().toISOString() });
     showToast('Quiz created! Now add questions.', 'success');
+    // Notify members
+    const { sendNotificationToAll } = await import('../../js/notifications.js');
+    await sendNotificationToAll(`🧠 New Quiz: ${title}`, `A new ${timeLimit}-minute quiz is available. Log in to attempt it!`, 'quiz');
     document.getElementById('createQuizForm').classList.add('hidden');
     manageQuestions(ref.id, title);
     loadQuizzes();

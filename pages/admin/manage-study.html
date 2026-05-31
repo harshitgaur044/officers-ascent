@@ -162,8 +162,16 @@
     };
     if (!data.title || !data.driveLink) { showToast('Title and Drive link required', 'error'); return; }
     try {
-      if (editingId) { await updateDoc(doc(db, 'study_materials', editingId), data); showToast('Material updated!', 'success'); }
-      else { await addDoc(collection(db, 'study_materials'), data); showToast('Material added!', 'success'); }
+      if (editingId) {
+        await updateDoc(doc(db, 'study_materials', editingId), data);
+        showToast('Material updated!', 'success');
+      } else {
+        await addDoc(collection(db, 'study_materials'), data);
+        showToast('Material added!', 'success');
+        // Notify members about new study material
+        const { sendNotificationToAll } = await import('../../js/notifications.js');
+        await sendNotificationToAll(`📚 New Study Material: ${data.title}`, `New ${data.category} material added. Check Study Materials to access it!`, 'material');
+      }
       closeModal(); load();
     } catch(e) { showToast('Error saving', 'error'); }
   };

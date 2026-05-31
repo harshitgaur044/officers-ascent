@@ -591,10 +591,63 @@
     `;
   }
 
+  // ── NOTIFICATIONS ──
+  import { requestNotificationPermission, listenForForegroundNotifications, createNotificationBanner, getNotificationStatus } from '../js/notifications.js';
+  import { onSnapshot } from '../js/firebase-config.js';
+
+  // Show notification permission banner
+  function renderNotifBanner() {
+    const bannerHtml = createNotificationBanner(session);
+    if (bannerHtml) {
+      const el = document.createElement('div');
+      el.innerHTML = bannerHtml;
+      // Insert after announcement banner area
+      const annEl = document.getElementById('announcementBanner');
+      annEl.parentNode.insertBefore(el, annEl.nextSibling);
+    }
+  }
+
+  window.enableNotifications = async function() {
+    const btn = document.querySelector('#notifBanner button');
+    if (btn) { btn.textContent = '⏳ Enabling...'; btn.disabled = true; }
+    const success = await requestNotificationPermission(session.id, session.name);
+    const banner = document.getElementById('notifBanner');
+    if (success) {
+      if (banner) banner.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--accent-green);font-size:0.85rem;"><span>✅</span> Notifications enabled! You'll get alerts for new tasks and announcements.</div>`;
+    } else {
+      if (btn) { btn.textContent = '🔔 Enable Notifications'; btn.disabled = false; }
+    }
+  };
+
+  // Listen for real-time notification updates (when site is open)
+  function listenForAdminUpdates() {
+    onSnapshot(doc(db, 'settings', 'latestNotification'), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      // Only show if notification is recent (within last 30 seconds)
+      const age = Date.now() - new Date(data.timestamp).getTime();
+      if (age < 30000 && age > 1000) {
+        const notif = document.createElement('div');
+        notif.style.cssText = `position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(13,18,37,0.97);border:1px solid #00b4ff;border-radius:12px;padding:16px 24px;z-index:99999;box-shadow:0 0 30px rgba(0,180,255,0.3);font-family:'Rajdhani',sans-serif;min-width:300px;max-width:480px;animation:slideDown 0.4s ease;backdrop-filter:blur(10px);`;
+        notif.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;"><span style="font-size:1.4rem;">🔔</span><div><div style="font-family:'Orbitron',monospace;font-size:0.8rem;color:#00b4ff;margin-bottom:4px;">${data.title}</div><div style="font-size:0.9rem;color:#e0e8f0;">${data.body}</div></div><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#445566;cursor:pointer;font-size:1.2rem;margin-left:auto;">✕</button></div>`;
+        document.body.appendChild(notif);
+        setTimeout(() => { notif.style.opacity='0'; notif.style.transition='opacity 0.4s'; setTimeout(()=>notif.remove(),400); }, 6000);
+        // Reload tasks/announcement if relevant
+        if (data.type === 'task') loadTasks();
+        if (data.type === 'announcement') loadHero();
+      }
+    });
+  }
+
+  // Listen for foreground FCM messages
+  listenForForegroundNotifications();
+
   // Init
   loadHero();
   loadTasks();
   loadStats();
+  renderNotifBanner();
+  listenForAdminUpdates();
 </script>
 </body>
 </html>
