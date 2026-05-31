@@ -592,55 +592,52 @@
   }
 
   // ── NOTIFICATIONS ──
-  import { requestNotificationPermission, listenForForegroundNotifications, createNotificationBanner, getNotificationStatus } from '../js/notifications.js';
+  import { requestNotificationPermission, listenForForegroundNotifications, createNotificationBanner } from '../js/notifications.js';
   import { onSnapshot } from '../js/firebase-config.js';
 
-  // Show notification permission banner
+  // Render permission banner just below announcement area
   function renderNotifBanner() {
-    const bannerHtml = createNotificationBanner(session);
-    if (bannerHtml) {
-      const el = document.createElement('div');
-      el.innerHTML = bannerHtml;
-      // Insert after announcement banner area
-      const annEl = document.getElementById('announcementBanner');
-      annEl.parentNode.insertBefore(el, annEl.nextSibling);
-    }
+    const html = createNotificationBanner(session);
+    if (!html) return;
+    const wrapper = document.createElement('div');
+    wrapper.id = '_notif_banner_wrapper';
+    wrapper.innerHTML = html;
+    const anchor = document.getElementById('announcementBanner');
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(wrapper, anchor.nextSibling);
   }
 
-  window.enableNotifications = async function() {
-    const btn = document.querySelector('#notifBanner button');
+  // Global function called by the Enable button
+  window._enableNotifications = async function() {
+    const btn = document.getElementById('_oa_enable_notif_btn');
     if (btn) { btn.textContent = '⏳ Enabling...'; btn.disabled = true; }
-    const success = await requestNotificationPermission(session.id, session.name);
-    const banner = document.getElementById('notifBanner');
-    if (success) {
-      if (banner) banner.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:var(--accent-green);font-size:0.85rem;"><span>✅</span> Notifications enabled! You'll get alerts for new tasks and announcements.</div>`;
+    const result = await requestNotificationPermission(session.id, session.name);
+    const wrapper = document.getElementById('_notif_banner_wrapper');
+    if (result.success) {
+      if (wrapper) wrapper.innerHTML = `<div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.2);border-radius:8px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:0.82rem;color:var(--accent-green);">✅ Notifications enabled! You'll get alerts even when your screen is locked.</div>`;
     } else {
       if (btn) { btn.textContent = '🔔 Enable Notifications'; btn.disabled = false; }
+      if (result.reason === 'denied') {
+        if (wrapper) wrapper.innerHTML = `<div style="background:rgba(255,140,0,0.07);border:1px solid rgba(255,140,0,0.25);border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:0.82rem;color:#ff8c00;">⚠️ Permission denied. Tap the 🔒 lock in your browser address bar → Allow Notifications → reload.</div>`;
+      }
     }
   };
 
-  // Listen for real-time notification updates (when site is open)
+  // Real-time Firestore listener — shows banner when site is open
   function listenForAdminUpdates() {
     onSnapshot(doc(db, 'settings', 'latestNotification'), (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
-      // Only show if notification is recent (within last 30 seconds)
       const age = Date.now() - new Date(data.timestamp).getTime();
-      if (age < 30000 && age > 1000) {
-        const notif = document.createElement('div');
-        notif.style.cssText = `position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(13,18,37,0.97);border:1px solid #00b4ff;border-radius:12px;padding:16px 24px;z-index:99999;box-shadow:0 0 30px rgba(0,180,255,0.3);font-family:'Rajdhani',sans-serif;min-width:300px;max-width:480px;animation:slideDown 0.4s ease;backdrop-filter:blur(10px);`;
-        notif.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;"><span style="font-size:1.4rem;">🔔</span><div><div style="font-family:'Orbitron',monospace;font-size:0.8rem;color:#00b4ff;margin-bottom:4px;">${data.title}</div><div style="font-size:0.9rem;color:#e0e8f0;">${data.body}</div></div><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:#445566;cursor:pointer;font-size:1.2rem;margin-left:auto;">✕</button></div>`;
-        document.body.appendChild(notif);
-        setTimeout(() => { notif.style.opacity='0'; notif.style.transition='opacity 0.4s'; setTimeout(()=>notif.remove(),400); }, 6000);
-        // Reload tasks/announcement if relevant
+      // Only show if notification posted in last 30s and not from page load
+      if (age < 30000 && age > 2000) {
         if (data.type === 'task') loadTasks();
         if (data.type === 'announcement') loadHero();
       }
     });
   }
 
-  // Listen for foreground FCM messages
-  listenForForegroundNotifications();
+  // Start foreground FCM listener (shows in-app banner when tab is open)
+  listenForForegroundNotifications().catch(()=>{});
 
   // Init
   loadHero();

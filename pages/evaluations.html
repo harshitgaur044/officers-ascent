@@ -6,9 +6,15 @@
   <title>Evaluations — The Officer's Ascent</title>
   <link rel="stylesheet" href="../css/style.css"/>
   <style>
-    .task-card-sel { cursor:pointer; transition:all 0.3s; }
-    .task-card-sel:hover { border-color:var(--accent-cyan); transform:translateY(-2px); }
-    .submitted-label { display:inline-flex; align-items:center; gap:6px; color:var(--accent-green); font-size:0.85rem; font-weight:600; }
+    .cat-card { border:1px solid var(--border-glow); border-radius:12px; overflow:hidden; margin-bottom:20px; }
+    .cat-header { background:rgba(0,180,255,0.07); padding:16px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; border-bottom:1px solid var(--border-glow); }
+    .cat-header:hover { background:rgba(0,180,255,0.12); }
+    .cat-title { font-family:'Orbitron',monospace; font-size:0.9rem; color:var(--accent-cyan); display:flex; align-items:center; gap:10px; }
+    .cat-body { padding:16px 20px; background:var(--bg-card); }
+    .subtask-btn { width:100%; text-align:left; background:var(--bg-secondary); border:1px solid var(--border-glow); border-radius:8px; padding:12px 16px; cursor:pointer; transition:all 0.2s; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .subtask-btn:hover { border-color:var(--accent-cyan); background:rgba(0,180,255,0.06); }
+    .subtask-btn.submitted { border-color:var(--accent-green); background:rgba(0,255,136,0.04); cursor:default; }
+    .submitted-label { color:var(--accent-green); font-size:0.82rem; font-weight:600; display:flex; align-items:center; gap:5px; }
     .eval-section { background:var(--bg-secondary); border:1px solid var(--border-glow); border-radius:10px; padding:20px; margin-bottom:16px; }
     .eval-member-hdr { display:flex; align-items:center; gap:12px; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border-glow); }
     .eval-avatar { width:44px; height:44px; border-radius:50%; border:2px solid var(--accent-cyan); overflow:hidden; background:var(--bg-card); display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0; }
@@ -18,6 +24,14 @@
     .eval-slider { flex:1; -webkit-appearance:none; height:4px; border-radius:2px; background:rgba(255,255,255,0.08); outline:none; cursor:pointer; }
     .eval-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:var(--accent-cyan); box-shadow:0 0 8px var(--accent-cyan); cursor:pointer; }
     .score-disp { width:38px; text-align:center; font-family:'Orbitron',monospace; font-size:0.9rem; color:var(--accent-green); font-weight:700; }
+    .topics-popup { position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(4px); z-index:2000; display:flex; align-items:center; justify-content:center; padding:20px; }
+    .topics-box { background:var(--bg-card); border:1px solid var(--border-glow); border-radius:12px; padding:28px; max-width:520px; width:100%; max-height:80vh; overflow-y:auto; box-shadow:0 0 40px rgba(0,180,255,0.2); }
+    .topic-item { display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+    .topic-num { font-family:'Orbitron',monospace; font-size:0.8rem; color:var(--accent-gold); min-width:24px; }
+    .topic-text { font-size:0.9rem; color:var(--text-primary); line-height:1.5; }
+    .collapse-icon { transition:transform 0.3s; color:var(--text-muted); font-size:0.8rem; }
+    .cat-collapsed .collapse-icon { transform:rotate(-90deg); }
+    .cat-collapsed .cat-body { display:none; }
   </style>
 </head>
 <body>
@@ -31,6 +45,7 @@
       <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
     </div>
     <div class="page-content">
+
       <div class="tabs mb-0">
         <button class="tab-btn active" id="tabSubmitBtn" onclick="switchTab('submit')">⚔️ Submit Evaluation</button>
         <button class="tab-btn" id="tabHistBtn" onclick="switchTab('history')">📋 Evaluation History</button>
@@ -38,20 +53,21 @@
 
       <!-- SUBMIT TAB -->
       <div id="tabSubmit" style="padding-top:24px;">
-        <!-- Step 1: Task selection -->
+        <!-- Step 1: Category + task selection -->
         <div id="step1">
           <div class="page-header" style="margin-bottom:20px;">
-            <div class="page-header-left"><h1>SELECT TASK</h1><p>Choose a task to evaluate your peers</p></div>
+            <div class="page-header-left"><h1>SELECT TASK</h1><p>Expand a category and choose the session to evaluate</p></div>
           </div>
-          <div id="taskGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;"></div>
+          <div id="catGrid"></div>
         </div>
         <!-- Step 2: Evaluation form -->
         <div id="step2" style="display:none;">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
             <button class="btn btn-sm" onclick="backToTasks()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">← Back</button>
             <div>
+              <div id="selTaskCat" style="font-size:0.75rem;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;"></div>
               <div id="selTaskName" class="card-title" style="margin:0;"></div>
-              <div id="selTaskDesc" style="font-size:0.8rem;color:var(--text-muted);"></div>
+              <div id="selTaskDesc" style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;"></div>
             </div>
           </div>
           <div id="evalForm"></div>
@@ -67,61 +83,158 @@
           <div class="page-header-left"><h1>EVALUATION HISTORY</h1><p>All peer evaluations — visible to everyone</p></div>
         </div>
         <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-          <select class="form-control" id="filterTask" onchange="loadHistory()" style="max-width:240px;"><option value="">All Tasks</option></select>
-          <select class="form-control" id="filterMember" onchange="loadHistory()" style="max-width:240px;"><option value="">All Members</option></select>
+          <select class="form-control" id="filterCat" onchange="loadHistory()" style="max-width:200px;"><option value="">All Categories</option></select>
+          <select class="form-control" id="filterTask" onchange="loadHistory()" style="max-width:200px;"><option value="">All Sessions</option></select>
+          <select class="form-control" id="filterMember" onchange="loadHistory()" style="max-width:200px;"><option value="">All Members</option></select>
         </div>
         <div id="historyList"></div>
       </div>
+
     </div>
   </main>
 </div>
 <div id="bottomNav"></div>
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- Topics popup -->
+<div id="topicsPopup" class="topics-popup" style="display:none;">
+  <div class="topics-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border-glow);">
+      <div id="topicsPopupTitle" style="font-family:'Orbitron',monospace;font-size:0.9rem;color:var(--accent-gold);letter-spacing:2px;"></div>
+      <button onclick="closeTopicsPopup()" style="background:none;border:none;color:var(--text-secondary);font-size:1.4rem;cursor:pointer;">✕</button>
+    </div>
+    <div id="topicsPopupList"></div>
+  </div>
+</div>
+
 <script type="module">
-  import { db, collection, doc, getDoc, getDocs, addDoc, query, where, orderBy } from '../js/firebase-config.js';
+  import { db, collection, doc, getDoc, getDocs, addDoc, query, where } from '../js/firebase-config.js';
   import { requireAuth, initLayout, getActiveMembers, getEvalTraits, showToast, recalculateBadges } from '../js/app.js';
 
   const session = requireAuth();
   if (!session) throw new Error();
   initLayout(session, 'evaluations', 'EVALUATIONS');
 
-  let tasks=[], members=[], traits=[], selectedTask=null, submittedTaskIds=new Set();
+  let categories=[], tasks=[], members=[], traits=[], selectedTask=null, submittedTaskIds=new Set();
 
   async function init() {
     members = await getActiveMembers();
     traits = await getEvalTraits();
-    const taskSnap = await getDocs(query(collection(db, 'tasks'), where('isActive','==',true)));
+
+    // Load categories
+    const catSnap = await getDocs(collection(db, 'task_categories'));
+    categories = catSnap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0));
+
+    // Load all active tasks
+    const taskSnap = await getDocs(query(collection(db,'tasks'), where('isActive','==',true)));
     tasks = taskSnap.docs.map(d=>({id:d.id,...d.data()}));
 
+    // Check submitted
     if (session.role==='member') {
       const subSnap = await getDocs(query(collection(db,'evaluations'), where('evaluatorId','==',session.id)));
       subSnap.forEach(d => submittedTaskIds.add(d.data().taskId));
     }
 
-    renderTasks();
+    renderCategories();
     populateHistoryFilters();
   }
 
-  function renderTasks() {
-    const grid = document.getElementById('taskGrid');
-    if (tasks.length===0) { grid.innerHTML='<div class="alert alert-info" style="grid-column:1/-1;">No active tasks yet. Admin will create tasks soon.</div>'; return; }
-    grid.innerHTML = tasks.map(t=>`
-      <div class="card task-card-sel" onclick="${submittedTaskIds.has(t.id)?'':` selectTask('${t.id}')`}">
-        <div style="font-family:'Orbitron',monospace;font-size:0.85rem;margin-bottom:6px;">${t.title}</div>
-        <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">${t.description||''}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-          ${t.meetLink?`<a href="${t.meetLink}" target="_blank" class="btn btn-primary btn-sm" onclick="event.stopPropagation()">🎥 Meet</a>`:''}
-          ${t.driveLink?`<a href="${t.driveLink}" target="_blank" class="btn btn-success btn-sm" onclick="event.stopPropagation()">📁 Material</a>`:''}
+  async function renderCategories() {
+    const grid = document.getElementById('catGrid');
+
+    if (categories.length === 0) {
+      grid.innerHTML = '<div class="alert alert-info">No tasks available yet. Admin will create sessions soon.</div>';
+      return;
+    }
+
+    grid.innerHTML = '';
+
+    for (const cat of categories) {
+      const catTasks = tasks.filter(t => t.categoryId === cat.id);
+      const topicSnap = await getDoc(doc(db, 'task_topics', cat.id));
+      const topics = topicSnap.exists() ? (topicSnap.data().topics || []) : [];
+
+      const card = document.createElement('div');
+      card.className = 'cat-card';
+      card.id = `evalcat_${cat.id}`;
+
+      const allSubmitted = catTasks.length > 0 && catTasks.every(t => submittedTaskIds.has(t.id));
+
+      card.innerHTML = `
+        <div class="cat-header" onclick="toggleCat('${cat.id}')">
+          <div class="cat-title">
+            <span style="font-size:1.3rem;">${cat.icon||'📂'}</span>
+            ${cat.name}
+            <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Rajdhani',sans-serif;">(${catTasks.length} sessions)</span>
+            ${allSubmitted ? '<span class="badge badge-green" style="font-size:0.65rem;">All Done</span>' : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;" onclick="event.stopPropagation()">
+            ${cat.hasTopics && topics.length > 0
+              ? `<button class="btn btn-gold btn-sm" onclick="showTopics('${cat.id}','${cat.name}')">📋 Topics (${topics.length})</button>`
+              : cat.hasTopics ? `<span style="font-size:0.78rem;color:var(--text-muted);">No topics yet</span>` : ''}
+            <span class="collapse-icon">▼</span>
+          </div>
         </div>
-        ${submittedTaskIds.has(t.id)
-          ? `<div class="submitted-label">✅ Evaluation Submitted</div>`
-          : `<button class="btn btn-primary btn-sm">Evaluate Peers →</button>`}
-      </div>`).join('');
+        <div class="cat-body">
+          ${catTasks.length === 0
+            ? '<div style="color:var(--text-muted);font-size:0.85rem;padding:4px 0;">No sessions in this category yet.</div>'
+            : catTasks.map(t => `
+              <div class="subtask-btn ${submittedTaskIds.has(t.id)?'submitted':''}"
+                onclick="${submittedTaskIds.has(t.id)?'':` selectTask('${t.id}')`}">
+                <div>
+                  <div style="font-size:0.88rem;font-weight:600;color:var(--text-primary);margin-bottom:3px;">${t.title}</div>
+                  ${t.description?`<div style="font-size:0.78rem;color:var(--text-secondary);">${t.description}</div>`:''}
+                  <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                    ${t.meetLink?`<a href="${t.meetLink}" target="_blank" class="btn btn-primary btn-sm" style="font-size:0.72rem;padding:4px 10px;" onclick="event.stopPropagation()">🎥 Meet</a>`:''}
+                    ${t.driveLink?`<a href="${t.driveLink}" target="_blank" class="btn btn-success btn-sm" style="font-size:0.72rem;padding:4px 10px;" onclick="event.stopPropagation()">📁 Material</a>`:''}
+                  </div>
+                </div>
+                ${submittedTaskIds.has(t.id)
+                  ? '<div class="submitted-label">✅ Submitted</div>'
+                  : '<div style="color:var(--accent-cyan);font-size:0.82rem;font-weight:600;">Evaluate →</div>'}
+              </div>`).join('')}
+        </div>`;
+      grid.appendChild(card);
+    }
+
+    // Also show tasks without a category (legacy support)
+    const uncategorized = tasks.filter(t => !t.categoryId);
+    if (uncategorized.length > 0) {
+      const card = document.createElement('div');
+      card.className = 'cat-card';
+      card.innerHTML = `
+        <div class="cat-header" onclick="toggleCat('_uncat')">
+          <div class="cat-title"><span style="font-size:1.3rem;">📌</span> Other Tasks</div>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="cat-body" id="catbody__uncat">
+          ${uncategorized.map(t=>`
+            <div class="subtask-btn ${submittedTaskIds.has(t.id)?'submitted':''}"
+              onclick="${submittedTaskIds.has(t.id)?'':` selectTask('${t.id}')`}">
+              <div>
+                <div style="font-size:0.88rem;font-weight:600;">${t.title}</div>
+                ${t.description?`<div style="font-size:0.78rem;color:var(--text-secondary);">${t.description}</div>`:''}
+              </div>
+              ${submittedTaskIds.has(t.id)
+                ? '<div class="submitted-label">✅ Submitted</div>'
+                : '<div style="color:var(--accent-cyan);font-size:0.82rem;font-weight:600;">Evaluate →</div>'}
+            </div>`).join('')}
+        </div>`;
+      card.id = 'evalcat__uncat';
+      grid.appendChild(card);
+    }
   }
+
+  window.toggleCat = function(catId) {
+    const card = document.getElementById(`evalcat_${catId}`);
+    if (card) card.classList.toggle('cat-collapsed');
+  };
 
   window.selectTask = function(id) {
     selectedTask = tasks.find(t=>t.id===id);
+    const cat = categories.find(c=>c.id===selectedTask.categoryId);
+    document.getElementById('selTaskCat').textContent = cat ? `${cat.icon||''} ${cat.name}` : '';
     document.getElementById('selTaskName').textContent = selectedTask.title;
     document.getElementById('selTaskDesc').textContent = selectedTask.description||'';
     document.getElementById('step1').style.display='none';
@@ -136,8 +249,10 @@
   };
 
   function buildEvalForm() {
-    const others = members.filter(m => m.id !== session.id);
+    const others = members.filter(m=>m.id!==session.id);
     if (others.length===0) { document.getElementById('evalForm').innerHTML='<div class="alert alert-info">No other members to evaluate.</div>'; return; }
+
+    // ONE feedback box per member at the bottom — not per trait
     document.getElementById('evalForm').innerHTML = others.map(m=>`
       <div class="eval-section">
         <div class="eval-member-hdr">
@@ -151,14 +266,17 @@
           <div class="trait-eval-row">
             <div class="trait-eval-label">${trait}</div>
             <input type="range" class="eval-slider" min="0" max="10" value="5"
-              id="s_${m.id}_${trait}" oninput="document.getElementById('sd_${m.id}_${trait}').textContent=this.value"/>
+              id="s_${m.id}_${trait}"
+              oninput="document.getElementById('sd_${m.id}_${trait}').textContent=this.value"/>
             <div class="score-disp" id="sd_${m.id}_${trait}">5</div>
           </div>`).join('')}
-        <div class="form-group mt-8">
-          <label class="form-label" style="font-size:0.65rem;">FEEDBACK (Optional)</label>
-          <textarea class="form-control" id="fb_${m.id}" rows="2" placeholder="Optional feedback for ${m.name}..."></textarea>
+        <div class="form-group mt-8" style="border-top:1px solid var(--border-glow);padding-top:12px;">
+          <label class="form-label" style="font-size:0.65rem;">OVERALL FEEDBACK FOR ${m.name.toUpperCase()} (Optional)</label>
+          <textarea class="form-control" id="fb_${m.id}" rows="2"
+            placeholder="Write any overall feedback or remarks for ${m.name}..."></textarea>
         </div>
       </div>`).join('');
+
     document.getElementById('submitRow').style.display='block';
   }
 
@@ -169,38 +287,65 @@
       for (const m of others) {
         const scores={};
         traits.forEach(t=>{ scores[t]=parseInt(document.getElementById(`s_${m.id}_${t}`)?.value||'5'); });
-        const feedback = document.getElementById(`fb_${m.id}`)?.value||'';
+        const feedback = document.getElementById(`fb_${m.id}`)?.value.trim()||'';
         await addDoc(collection(db,'evaluations'), {
           evaluatorId:session.id, evaluatorName:session.name,
           evaluatedId:m.id, evaluatedName:m.name,
           taskId:selectedTask.id, taskName:selectedTask.title,
+          categoryId:selectedTask.categoryId||'', categoryName:selectedTask.categoryName||'',
           scores, feedback, submittedAt:new Date().toISOString()
         });
       }
       submittedTaskIds.add(selectedTask.id);
-      showToast('✅ Evaluations submitted successfully!','success');
-      // Recalculate badges in background
+      showToast('✅ Evaluations submitted!','success');
       recalculateBadges().catch(()=>{});
       backToTasks();
-      renderTasks();
+      renderCategories();
     } catch(e) {
       showToast('Error submitting. Try again.','error');
       console.error(e);
     }
   };
 
+  // ── TOPICS POPUP ──
+  window.showTopics = async function(catId, catName) {
+    const snap = await getDoc(doc(db,'task_topics',catId));
+    const topics = snap.exists() ? (snap.data().topics||[]) : [];
+    document.getElementById('topicsPopupTitle').textContent = `📋 ${catName.toUpperCase()} — UPCOMING TOPICS`;
+    document.getElementById('topicsPopupList').innerHTML = topics.length===0
+      ? '<div style="color:var(--text-muted);">No topics added yet.</div>'
+      : topics.map((t,i)=>`
+          <div class="topic-item">
+            <div class="topic-num">${i+1}.</div>
+            <div class="topic-text">${t}</div>
+          </div>`).join('');
+    document.getElementById('topicsPopup').style.display='flex';
+  };
+
+  window.closeTopicsPopup = () => document.getElementById('topicsPopup').style.display='none';
+
+  // Close popup on backdrop click
+  document.getElementById('topicsPopup').addEventListener('click', function(e) {
+    if (e.target===this) closeTopicsPopup();
+  });
+
+  // ── HISTORY ──
   function populateHistoryFilters() {
+    const catSel=document.getElementById('filterCat');
     const taskSel=document.getElementById('filterTask');
     const memSel=document.getElementById('filterMember');
+    categories.forEach(c=>{ catSel.innerHTML+=`<option value="${c.id}">${c.name}</option>`; });
     tasks.forEach(t=>{ taskSel.innerHTML+=`<option value="${t.id}">${t.title}</option>`; });
     members.forEach(m=>{ memSel.innerHTML+=`<option value="${m.id}">${m.name}</option>`; });
   }
 
   window.loadHistory = async function() {
+    const catFilter=document.getElementById('filterCat').value;
     const taskFilter=document.getElementById('filterTask').value;
     const memFilter=document.getElementById('filterMember').value;
     const snap = await getDocs(collection(db,'evaluations'));
     let evals = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if (catFilter) evals=evals.filter(e=>e.categoryId===catFilter);
     if (taskFilter) evals=evals.filter(e=>e.taskId===taskFilter);
     if (memFilter) evals=evals.filter(e=>e.evaluatedId===memFilter);
     evals.sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt));
@@ -209,29 +354,30 @@
     if (evals.length===0) { list.innerHTML='<div style="color:var(--text-muted);padding:20px;">No evaluations found.</div>'; return; }
     list.innerHTML = evals.map(e=>`
       <div class="card mb-16 fade-in">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
           <div>
+            ${e.categoryName?`<span style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">${e.categoryName} · </span>`:''}
             <span style="font-family:'Orbitron',monospace;font-size:0.8rem;color:var(--accent-cyan);">${e.taskName}</span>
             <span style="color:var(--text-muted);margin:0 6px;">·</span>
             <span style="font-size:0.85rem;">By <strong>${e.evaluatorName}</strong> → <strong>${e.evaluatedName}</strong></span>
           </div>
           <span style="font-size:0.75rem;color:var(--text-muted);">${new Date(e.submittedAt).toLocaleDateString('en-IN')}</span>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
           ${Object.entries(e.scores||{}).map(([t,s])=>`
             <div style="background:rgba(0,180,255,0.08);border:1px solid rgba(0,180,255,0.2);border-radius:4px;padding:3px 10px;font-size:0.78rem;color:var(--text-secondary);">
               ${t}: <span style="color:var(--accent-cyan);font-weight:600;">${s}/10</span>
             </div>`).join('')}
         </div>
-        ${e.feedback?`<div style="font-size:0.84rem;color:var(--text-secondary);font-style:italic;border-top:1px solid var(--border-glow);padding-top:8px;">"${e.feedback}"</div>`:''}
+        ${e.feedback?`<div style="font-size:0.84rem;color:var(--text-secondary);font-style:italic;border-top:1px solid var(--border-glow);padding-top:8px;margin-top:4px;">"${e.feedback}"</div>`:''}
       </div>`).join('');
   };
 
   window.switchTab = function(tab) {
-    document.getElementById('tabSubmit').style.display = tab==='submit'?'block':'none';
-    document.getElementById('tabHistory').style.display = tab==='history'?'block':'none';
-    document.getElementById('tabSubmitBtn').classList.toggle('active', tab==='submit');
-    document.getElementById('tabHistBtn').classList.toggle('active', tab==='history');
+    document.getElementById('tabSubmit').style.display=tab==='submit'?'block':'none';
+    document.getElementById('tabHistory').style.display=tab==='history'?'block':'none';
+    document.getElementById('tabSubmitBtn').classList.toggle('active',tab==='submit');
+    document.getElementById('tabHistBtn').classList.toggle('active',tab==='history');
     if (tab==='history') loadHistory();
   };
 

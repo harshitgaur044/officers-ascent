@@ -5,6 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Manage Tasks — Admin</title>
   <link rel="stylesheet" href="../../css/style.css"/>
+  <style>
+    .category-card { border:1px solid var(--border-glow); border-radius:12px; overflow:hidden; margin-bottom:20px; }
+    .category-header { background:rgba(0,180,255,0.08); border-bottom:1px solid var(--border-glow); padding:16px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; cursor:pointer; }
+    .category-header:hover { background:rgba(0,180,255,0.12); }
+    .category-name { font-family:'Orbitron',monospace; font-size:0.95rem; color:var(--accent-cyan); display:flex; align-items:center; gap:10px; }
+    .category-body { padding:16px 20px; background:var(--bg-card); }
+    .subtask-row { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-secondary); border:1px solid var(--border-glow); border-radius:8px; margin-bottom:8px; gap:12px; flex-wrap:wrap; }
+    .subtask-title { font-size:0.9rem; font-weight:600; color:var(--text-primary); }
+    .subtask-desc { font-size:0.8rem; color:var(--text-secondary); margin-top:2px; }
+    .topic-chip { display:inline-flex; align-items:center; gap:6px; background:rgba(255,215,0,0.08); border:1px solid rgba(255,215,0,0.25); border-radius:6px; padding:5px 10px; font-size:0.8rem; color:var(--accent-gold); margin:4px; }
+    .topic-chip button { background:none; border:none; color:rgba(255,68,68,0.6); cursor:pointer; font-size:0.8rem; padding:0 2px; line-height:1; }
+    .topic-chip button:hover { color:var(--accent-red); }
+    .collapse-icon { transition:transform 0.3s; font-size:0.8rem; color:var(--text-muted); }
+    .collapsed .collapse-icon { transform:rotate(-90deg); }
+    .collapsed .category-body { display:none; }
+  </style>
 </head>
 <body>
 <div id="mobileTopbar"></div>
@@ -18,137 +34,325 @@
     </div>
     <div class="page-content">
       <div class="page-header">
-        <div class="page-header-left"><h1>MANAGE TASKS</h1><p>Create and manage evaluation tasks</p></div>
-        <button class="btn btn-gold" onclick="openModal()">+ NEW TASK</button>
+        <div class="page-header-left"><h1>MANAGE TASKS</h1><p>Categories → Sub-tasks inside each category</p></div>
+        <button class="btn btn-gold" onclick="openCategoryModal()">+ NEW CATEGORY</button>
       </div>
 
-      <div id="tasksList" style="display:flex;flex-direction:column;gap:16px;"></div>
+      <div id="categoriesList"></div>
     </div>
   </main>
 </div>
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- Task Modal -->
-<div class="modal-overlay" id="taskModal">
-  <div class="modal">
+<!-- Category Modal -->
+<div class="modal-overlay" id="categoryModal">
+  <div class="modal" style="max-width:440px;">
     <div class="modal-header">
-      <span class="modal-title" id="modalTitle">📌 NEW TASK</span>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <span class="modal-title" id="catModalTitle">📂 NEW CATEGORY</span>
+      <button class="modal-close" onclick="closeCategoryModal()">✕</button>
     </div>
-    <div class="form-group"><label class="form-label">Task Title *</label><input type="text" class="form-control" id="taskTitle" placeholder="e.g. GD #1, Lecturette #2"/></div>
-    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="taskDesc" rows="3" placeholder="What is this task about?"></textarea></div>
-    <div class="form-group"><label class="form-label">Google Meet Link</label><input type="url" class="form-control" id="taskMeet" placeholder="https://meet.google.com/..."/></div>
-    <div class="form-group"><label class="form-label">Study Material Drive Link</label><input type="url" class="form-control" id="taskDrive" placeholder="https://drive.google.com/..."/></div>
+    <div class="form-group"><label class="form-label">Category Name *</label><input type="text" class="form-control" id="catName" placeholder="e.g. Group Discussion, Lecturette, TAT"/></div>
+    <div class="form-group"><label class="form-label">Icon (emoji)</label><input type="text" class="form-control" id="catIcon" placeholder="e.g. 🗣️ 📢 📝" maxlength="4"/></div>
     <div class="form-group">
-      <label class="form-label">Status</label>
-      <select class="form-control" id="taskActive"><option value="true">Active (visible to members)</option><option value="false">Inactive</option></select>
+      <label class="form-label">Enable Topic List for this category?</label>
+      <select class="form-control" id="catHasTopics">
+        <option value="true">Yes — members can view upcoming topics</option>
+        <option value="false">No — topics not needed</option>
+      </select>
     </div>
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
-      <button class="btn" onclick="closeModal()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">Cancel</button>
-      <button class="btn btn-gold" onclick="saveTask()">💾 Save Task</button>
+      <button class="btn" onclick="closeCategoryModal()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">Cancel</button>
+      <button class="btn btn-gold" onclick="saveCategory()">💾 Save Category</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sub-task Modal -->
+<div class="modal-overlay" id="subtaskModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="subtaskModalTitle">📌 ADD SUB-TASK</span>
+      <button class="modal-close" onclick="closeSubtaskModal()">✕</button>
+    </div>
+    <div class="form-group"><label class="form-label">Title * <span style="color:var(--text-muted);font-size:0.75rem;">(e.g. GD #1)</span></label><input type="text" class="form-control" id="subtaskTitle" placeholder="e.g. GD #1, Session 2"/></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="subtaskDesc" rows="3" placeholder="What is this session about?"></textarea></div>
+    <div class="form-group"><label class="form-label">Google Meet Link</label><input type="url" class="form-control" id="subtaskMeet" placeholder="https://meet.google.com/..."/></div>
+    <div class="form-group"><label class="form-label">Study Material Drive Link</label><input type="url" class="form-control" id="subtaskDrive" placeholder="https://drive.google.com/..."/></div>
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-control" id="subtaskActive">
+        <option value="true">Active (visible to members for evaluation)</option>
+        <option value="false">Inactive</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn" onclick="closeSubtaskModal()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">Cancel</button>
+      <button class="btn btn-gold" onclick="saveSubtask()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Topics Modal -->
+<div class="modal-overlay" id="topicsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="topicsModalTitle">📋 MANAGE TOPICS</span>
+      <button class="modal-close" onclick="closeTopicsModal()">✕</button>
+    </div>
+    <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">Members can view these upcoming topics from the site. Add as many as you want.</p>
+    <div id="topicChips" style="margin-bottom:16px;min-height:40px;"></div>
+    <div style="display:flex;gap:10px;">
+      <input type="text" class="form-control" id="newTopicInput" placeholder="Type a topic and press Add..." style="flex:1;"/>
+      <button class="btn btn-gold btn-sm" onclick="addTopic()">+ Add</button>
+    </div>
+    <div style="margin-top:20px;text-align:right;">
+      <button class="btn btn-success" onclick="saveTopics()">💾 Save All Topics</button>
     </div>
   </div>
 </div>
 
 <script type="module">
-  import { db, collection, doc, getDocs, addDoc, updateDoc, deleteDoc } from '../../js/firebase-config.js';
+  import { db, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, getDoc, setDoc, query, where } from '../../js/firebase-config.js';
   import { requireAuth, initLayout, showToast } from '../../js/app.js';
 
   const session = requireAuth('admin');
   if (!session) throw new Error();
   initLayout(session, 'manage-tasks', 'MANAGE TASKS');
 
-  let tasks = [], editingId = null;
+  let categories = [], editingCatId = null, editingSubId = null, activeTopicCatId = null, tempTopics = [];
 
-  async function loadTasks() {
-    const snap = await getDocs(collection(db, 'tasks'));
-    tasks = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt||0)-new Date(a.createdAt||0));
-    const list = document.getElementById('tasksList');
-    if (tasks.length === 0) { list.innerHTML = '<div class="alert alert-info">No tasks yet. Create your first task!</div>'; return; }
-    list.innerHTML = tasks.map(t => `
-      <div class="card fade-in">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
-          <div style="flex:1;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-              <span style="font-family:'Orbitron',monospace;font-size:0.9rem;">${t.title}</span>
-              ${t.isActive ? '<span class="badge badge-green">Active</span>' : '<span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text-muted);border:1px solid var(--border-glow);">Inactive</span>'}
-            </div>
-            ${t.description ? `<div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">${t.description}</div>` : ''}
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              ${t.meetLink ? `<a href="${t.meetLink}" target="_blank" class="btn btn-primary btn-sm">🎥 Meet Link</a>` : ''}
-              ${t.driveLink ? `<a href="${t.driveLink}" target="_blank" class="btn btn-success btn-sm">📁 Drive Link</a>` : ''}
-            </div>
+  // ── LOAD ALL ──
+  async function loadAll() {
+    const catSnap = await getDocs(collection(db, 'task_categories'));
+    categories = catSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a,b) => new Date(a.createdAt||0) - new Date(b.createdAt||0));
+
+    const list = document.getElementById('categoriesList');
+    if (categories.length === 0) {
+      list.innerHTML = `<div class="alert alert-info">No categories yet. Click <strong>+ NEW CATEGORY</strong> to create your first one (e.g. Group Discussion).</div>`;
+      return;
+    }
+
+    list.innerHTML = '';
+    for (const cat of categories) {
+      // Load subtasks for this category
+      const subSnap = await getDocs(query(collection(db, 'tasks'), where('categoryId','==',cat.id)));
+      const subtasks = subSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a,b) => new Date(a.createdAt||0) - new Date(b.createdAt||0));
+
+      // Load topics
+      const topicSnap = await getDoc(doc(db, 'task_topics', cat.id));
+      const topics = topicSnap.exists() ? (topicSnap.data().topics || []) : [];
+
+      const card = document.createElement('div');
+      card.className = 'category-card';
+      card.id = `cat_${cat.id}`;
+      card.innerHTML = `
+        <div class="category-header" onclick="toggleCategory('${cat.id}')">
+          <div class="category-name">
+            <span style="font-size:1.3rem;">${cat.icon||'📂'}</span>
+            ${cat.name}
+            <span style="font-size:0.7rem;color:var(--text-muted);font-family:'Rajdhani',sans-serif;">(${subtasks.length} sessions)</span>
           </div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-primary btn-sm" onclick="editTask('${t.id}')">✏️ Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">🗑️</button>
+          <div style="display:flex;gap:8px;align-items:center;" onclick="event.stopPropagation()">
+            ${cat.hasTopics ? `<button class="btn btn-gold btn-sm" onclick="openTopicsModal('${cat.id}','${cat.name}')">📋 Topics (${topics.length})</button>` : ''}
+            <button class="btn btn-primary btn-sm" onclick="openSubtaskModal('${cat.id}','${cat.name}')">+ Add Session</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteCategory('${cat.id}')">🗑️</button>
+            <span class="collapse-icon">▼</span>
           </div>
         </div>
+        <div class="category-body">
+          ${subtasks.length === 0
+            ? `<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No sessions yet. Click <strong>+ Add Session</strong> to add GD #1, Session 2 etc.</div>`
+            : subtasks.map(t => `
+              <div class="subtask-row">
+                <div style="flex:1;">
+                  <div class="subtask-title">
+                    ${t.title}
+                    ${t.isActive ? '<span class="badge badge-green" style="margin-left:8px;font-size:0.65rem;">Active</span>' : '<span class="badge" style="margin-left:8px;font-size:0.65rem;background:rgba(255,255,255,0.04);color:var(--text-muted);border:1px solid var(--border-glow);">Inactive</span>'}
+                  </div>
+                  ${t.description ? `<div class="subtask-desc">${t.description}</div>` : ''}
+                  <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                    ${t.meetLink ? `<a href="${t.meetLink}" target="_blank" class="btn btn-primary btn-sm" style="font-size:0.72rem;padding:4px 10px;">🎥 Meet</a>` : ''}
+                    ${t.driveLink ? `<a href="${t.driveLink}" target="_blank" class="btn btn-success btn-sm" style="font-size:0.72rem;padding:4px 10px;">📁 Drive</a>` : ''}
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0;">
+                  <button class="btn btn-primary btn-sm" onclick="editSubtask('${t.id}','${cat.id}','${cat.name}')">✏️</button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteSubtask('${t.id}')">🗑️</button>
+                </div>
+              </div>`).join('')}
+        </div>`;
+      list.appendChild(card);
+    }
+  }
+
+  window.toggleCategory = function(catId) {
+    const card = document.getElementById(`cat_${catId}`);
+    card.classList.toggle('collapsed');
+  };
+
+  // ── CATEGORY CRUD ──
+  window.openCategoryModal = function(id) {
+    editingCatId = id || null;
+    document.getElementById('catModalTitle').textContent = id ? '✏️ EDIT CATEGORY' : '📂 NEW CATEGORY';
+    if (id) {
+      const cat = categories.find(c => c.id === id);
+      document.getElementById('catName').value = cat.name;
+      document.getElementById('catIcon').value = cat.icon || '';
+      document.getElementById('catHasTopics').value = String(cat.hasTopics !== false);
+    } else {
+      document.getElementById('catName').value = '';
+      document.getElementById('catIcon').value = '';
+      document.getElementById('catHasTopics').value = 'true';
+    }
+    document.getElementById('categoryModal').classList.add('active');
+  };
+
+  window.closeCategoryModal = () => { document.getElementById('categoryModal').classList.remove('active'); editingCatId = null; };
+
+  window.saveCategory = async function() {
+    const name = document.getElementById('catName').value.trim();
+    if (!name) { showToast('Category name required', 'error'); return; }
+    const data = {
+      name,
+      icon: document.getElementById('catIcon').value.trim() || '📂',
+      hasTopics: document.getElementById('catHasTopics').value === 'true',
+    };
+    if (editingCatId) {
+      await updateDoc(doc(db, 'task_categories', editingCatId), data);
+      showToast('Category updated!', 'success');
+    } else {
+      await addDoc(collection(db, 'task_categories'), { ...data, createdAt: new Date().toISOString() });
+      showToast('Category created!', 'success');
+    }
+    closeCategoryModal();
+    loadAll();
+  };
+
+  window.deleteCategory = async function(id) {
+    if (!confirm('Delete this category and ALL its sessions? Cannot be undone.')) return;
+    // Delete all subtasks in category
+    const subSnap = await getDocs(query(collection(db, 'tasks'), where('categoryId','==',id)));
+    for (const d of subSnap.docs) await deleteDoc(d.ref);
+    await deleteDoc(doc(db, 'task_categories', id));
+    showToast('Category deleted', 'success');
+    loadAll();
+  };
+
+  // ── SUBTASK CRUD ──
+  let activeSubCatId = null, activeSubCatName = '';
+
+  window.openSubtaskModal = function(catId, catName) {
+    editingSubId = null;
+    activeSubCatId = catId;
+    activeSubCatName = catName;
+    document.getElementById('subtaskModalTitle').textContent = `📌 ADD SESSION — ${catName}`;
+    ['subtaskTitle','subtaskDesc','subtaskMeet','subtaskDrive'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('subtaskActive').value = 'true';
+    document.getElementById('subtaskModal').classList.add('active');
+  };
+
+  window.editSubtask = async function(taskId, catId, catName) {
+    editingSubId = taskId;
+    activeSubCatId = catId;
+    activeSubCatName = catName;
+    const snap = await getDoc(doc(db, 'tasks', taskId));
+    const t = snap.data();
+    document.getElementById('subtaskModalTitle').textContent = `✏️ EDIT SESSION — ${catName}`;
+    document.getElementById('subtaskTitle').value = t.title || '';
+    document.getElementById('subtaskDesc').value = t.description || '';
+    document.getElementById('subtaskMeet').value = t.meetLink || '';
+    document.getElementById('subtaskDrive').value = t.driveLink || '';
+    document.getElementById('subtaskActive').value = String(t.isActive !== false);
+    document.getElementById('subtaskModal').classList.add('active');
+  };
+
+  window.closeSubtaskModal = () => { document.getElementById('subtaskModal').classList.remove('active'); editingSubId = null; };
+
+  window.saveSubtask = async function() {
+    const title = document.getElementById('subtaskTitle').value.trim();
+    if (!title) { showToast('Session title required', 'error'); return; }
+    const catObj = categories.find(c => c.id === activeSubCatId);
+    const data = {
+      title,
+      categoryId: activeSubCatId,
+      categoryName: catObj?.name || activeSubCatName,
+      description: document.getElementById('subtaskDesc').value.trim(),
+      meetLink: document.getElementById('subtaskMeet').value.trim(),
+      driveLink: document.getElementById('subtaskDrive').value.trim(),
+      isActive: document.getElementById('subtaskActive').value === 'true',
+    };
+    try {
+      if (editingSubId) {
+        await updateDoc(doc(db, 'tasks', editingSubId), data);
+        showToast('Session updated!', 'success');
+      } else {
+        await addDoc(collection(db, 'tasks'), { ...data, createdAt: new Date().toISOString() });
+        showToast('Session added!', 'success');
+        if (data.isActive) {
+          try {
+            const { sendNotificationToAll } = await import('../../js/notifications.js');
+            await sendNotificationToAll(`📌 New Session: ${title}`, `${catObj?.name||''} — ${data.description||'New session added. Log in to evaluate!'}`, 'task');
+          } catch(e) {}
+        }
+      }
+      closeSubtaskModal();
+      loadAll();
+    } catch(e) { showToast('Error saving', 'error'); console.error(e); }
+  };
+
+  window.deleteSubtask = async function(id) {
+    if (!confirm('Delete this session?')) return;
+    await deleteDoc(doc(db, 'tasks', id));
+    showToast('Session deleted', 'success');
+    loadAll();
+  };
+
+  // ── TOPICS CRUD ──
+  window.openTopicsModal = async function(catId, catName) {
+    activeTopicCatId = catId;
+    document.getElementById('topicsModalTitle').textContent = `📋 TOPICS — ${catName}`;
+    const snap = await getDoc(doc(db, 'task_topics', catId));
+    tempTopics = snap.exists() ? [...(snap.data().topics || [])] : [];
+    renderTopicChips();
+    document.getElementById('newTopicInput').value = '';
+    document.getElementById('topicsModal').classList.add('active');
+  };
+
+  window.closeTopicsModal = () => { document.getElementById('topicsModal').classList.remove('active'); activeTopicCatId = null; tempTopics = []; };
+
+  function renderTopicChips() {
+    const el = document.getElementById('topicChips');
+    if (tempTopics.length === 0) { el.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No topics yet. Add topics below.</div>'; return; }
+    el.innerHTML = tempTopics.map((t, i) => `
+      <div class="topic-chip">
+        <span>${i+1}. ${t}</span>
+        <button onclick="removeTopic(${i})" title="Remove">✕</button>
       </div>`).join('');
   }
 
-  window.openModal = function() {
-    editingId = null;
-    document.getElementById('modalTitle').textContent = '📌 NEW TASK';
-    ['taskTitle','taskDesc','taskMeet','taskDrive'].forEach(id => document.getElementById(id).value='');
-    document.getElementById('taskActive').value = 'true';
-    document.getElementById('taskModal').classList.add('active');
+  window.addTopic = function() {
+    const val = document.getElementById('newTopicInput').value.trim();
+    if (!val) return;
+    tempTopics.push(val);
+    document.getElementById('newTopicInput').value = '';
+    renderTopicChips();
   };
 
-  window.editTask = function(id) {
-    editingId = id;
-    const t = tasks.find(t => t.id === id);
-    document.getElementById('modalTitle').textContent = '✏️ EDIT TASK';
-    document.getElementById('taskTitle').value = t.title || '';
-    document.getElementById('taskDesc').value = t.description || '';
-    document.getElementById('taskMeet').value = t.meetLink || '';
-    document.getElementById('taskDrive').value = t.driveLink || '';
-    document.getElementById('taskActive').value = String(t.isActive !== false);
-    document.getElementById('taskModal').classList.add('active');
+  // Allow Enter key to add topic
+  document.getElementById('newTopicInput')?.addEventListener('keydown', e => { if(e.key==='Enter') window.addTopic(); });
+
+  window.removeTopic = function(idx) { tempTopics.splice(idx, 1); renderTopicChips(); };
+
+  window.saveTopics = async function() {
+    await setDoc(doc(db, 'task_topics', activeTopicCatId), { topics: tempTopics, updatedAt: new Date().toISOString() });
+    showToast(`${tempTopics.length} topics saved!`, 'success');
+    closeTopicsModal();
+    loadAll();
   };
 
-  window.saveTask = async function() {
-    const title = document.getElementById('taskTitle').value.trim();
-    if (!title) { showToast('Task title is required', 'error'); return; }
-    const data = {
-      title,
-      description: document.getElementById('taskDesc').value.trim(),
-      meetLink: document.getElementById('taskMeet').value.trim(),
-      driveLink: document.getElementById('taskDrive').value.trim(),
-      isActive: document.getElementById('taskActive').value === 'true',
-    };
-    try {
-      if (editingId) {
-        await updateDoc(doc(db, 'tasks', editingId), data);
-        showToast('Task updated!', 'success');
-        // Notify members about task update
-        if (data.isActive) {
-          const { sendNotificationToAll } = await import('../../js/notifications.js');
-          await sendNotificationToAll(`📌 Task Updated: ${title}`, data.description || 'A task has been updated. Check the site for details.', 'task');
-        }
-      } else {
-        await addDoc(collection(db, 'tasks'), { ...data, createdAt: new Date().toISOString() });
-        showToast('Task created!', 'success');
-        // Notify members about new task
-        if (data.isActive) {
-          const { sendNotificationToAll } = await import('../../js/notifications.js');
-          await sendNotificationToAll(`⚔️ New Task: ${title}`, data.description || 'A new task has been added. Log in to evaluate your peers!', 'task');
-        }
-      }
-      closeModal(); loadTasks();
-    } catch(e) { showToast('Error saving task', 'error'); }
-  };
-
-  window.deleteTask = async function(id) {
-    if (!confirm('Delete this task? This cannot be undone.')) return;
-    await deleteDoc(doc(db, 'tasks', id));
-    showToast('Task deleted', 'success');
-    loadTasks();
-  };
-
-  window.closeModal = function() { document.getElementById('taskModal').classList.remove('active'); editingId = null; };
-
-  loadTasks();
+  loadAll();
 </script>
 </body>
 </html>
