@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Members — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">MEMBERS</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left">
+          <h1>ALL MEMBERS</h1>
+          <p>The Officer's Ascent — Active Candidates</p>
+        </div>
+        <input type="text" class="form-control" placeholder="🔍 Search members..." id="searchInput" style="max-width:240px;" oninput="filterMembers()"/>
+      </div>
+
+      <div class="members-grid" id="membersGrid">
+        <div style="color:var(--text-muted);padding:20px;">Loading members...</div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, getDocs, query, where } from '../js/firebase-config.js';
+  import { requireAuth, initLayout, getActiveMembers, getMemberEvalAvg, getAttendancePercent } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error();
+  initLayout(session, 'members', 'MEMBERS');
+
+  let allMembers = [];
+
+  async function loadMembers() {
+    allMembers = await getActiveMembers();
+    renderMembers(allMembers);
+  }
+
+  async function renderMembers(members) {
+    const grid = document.getElementById('membersGrid');
+    grid.innerHTML = '';
+    if (members.length === 0) {
+      grid.innerHTML = '<div style="color:var(--text-muted);padding:20px;grid-column:1/-1;">No members found.</div>';
+      return;
+    }
+    for (const m of members) {
+      const avg = await getMemberEvalAvg(m.id);
+      const att = await getAttendancePercent(m.id);
+      const card = document.createElement('div');
+      card.className = 'member-card fade-in';
+      card.innerHTML = `
+        <div class="member-avatar">
+          ${m.profilePic ? `<img src="${m.profilePic}" alt="${m.name}"/>` : '🪖'}
+        </div>
+        <div class="member-name">${m.name}</div>
+        <div class="member-tagline">${m.tagline || '<em>No tagline set</em>'}</div>
+        <div class="member-stats">
+          <div class="member-stat">
+            <div class="member-stat-value">${avg.total > 0 ? avg.total.toFixed(1) : '—'}</div>
+            <div class="member-stat-label">Avg Score</div>
+          </div>
+          <div class="member-stat">
+            <div class="member-stat-value">${att}%</div>
+            <div class="member-stat-label">Attendance</div>
+          </div>
+        </div>
+      `;
+      card.onclick = () => window.location.href = `profile.html?id=${m.id}`;
+      grid.appendChild(card);
+    }
+  }
+
+  window.filterMembers = function() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const filtered = allMembers.filter(m => m.name.toLowerCase().includes(q));
+    renderMembers(filtered);
+  };
+
+  loadMembers();
+</script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Study Materials — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">STUDY MATERIALS</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left"><h1>STUDY MATERIALS</h1><p>Resources for SSB preparation</p></div>
+        <input type="text" class="form-control" placeholder="🔍 Search materials..." id="searchInput" style="max-width:240px;" oninput="filterMaterials()"/>
+      </div>
+
+      <!-- Category tabs -->
+      <div id="categoryTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;"></div>
+
+      <!-- Materials grid -->
+      <div id="materialsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;"></div>
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, getDocs, doc, getDoc } from '../js/firebase-config.js';
+  import { requireAuth, initLayout } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error();
+  initLayout(session, 'study', 'STUDY MATERIALS');
+
+  let materials = [], activeCategory = 'All';
+
+  const catIcons = { Psychology:'🧠', TAT:'🖼️', WAT:'📝', SRT:'⚡', GTO:'🏃', Interview:'🎙️', Lecturette:'📢', 'Current Affairs':'📰' };
+
+  async function load() {
+    const snap = await getDocs(collection(db, 'study_materials'));
+    materials = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const catSnap = await getDoc(doc(db, 'settings', 'studyCategories'));
+    const cats = catSnap.exists() ? catSnap.data().categories : [];
+
+    // Build category tabs
+    const allCats = ['All', ...cats];
+    document.getElementById('categoryTabs').innerHTML = allCats.map(c => `
+      <button class="tab-btn ${c==='All'?'active':''}" onclick="setCategory('${c}',this)">${catIcons[c]||'📁'} ${c}</button>
+    `).join('');
+
+    render();
+  }
+
+  window.setCategory = function(cat, el) {
+    activeCategory = cat;
+    document.querySelectorAll('#categoryTabs .tab-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    render();
+  };
+
+  window.filterMaterials = function() { render(); };
+
+  function render() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    let filtered = materials;
+    if (activeCategory !== 'All') filtered = filtered.filter(m => m.category === activeCategory);
+    if (search) filtered = filtered.filter(m => (m.title+m.description+m.category).toLowerCase().includes(search));
+
+    const grid = document.getElementById('materialsGrid');
+    if (filtered.length === 0) {
+      grid.innerHTML = '<div style="color:var(--text-muted);padding:20px;grid-column:1/-1;">No materials found. Admin will add study resources soon.</div>';
+      return;
+    }
+
+    grid.innerHTML = filtered.map(m => `
+      <div class="card fade-in" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:1.4rem;">${catIcons[m.category]||'📁'}</span>
+          <span class="badge badge-cyan" style="font-size:0.65rem;">${m.category}</span>
+        </div>
+        <div style="font-family:'Orbitron',monospace;font-size:0.85rem;color:var(--text-primary);">${m.title}</div>
+        ${m.description ? `<div style="font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">${m.description}</div>` : ''}
+        <a href="${m.driveLink}" target="_blank" class="btn btn-success btn-sm" style="align-self:flex-start;margin-top:auto;">📁 Open in Drive</a>
+      </div>`).join('');
+  }
+
+  load();
+</script>
+</body>
+</html>

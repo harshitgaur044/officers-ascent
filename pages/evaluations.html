@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Evaluations — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .task-card-sel { cursor:pointer; transition:all 0.3s; }
+    .task-card-sel:hover { border-color:var(--accent-cyan); transform:translateY(-2px); }
+    .submitted-label { display:inline-flex; align-items:center; gap:6px; color:var(--accent-green); font-size:0.85rem; font-weight:600; }
+    .eval-section { background:var(--bg-secondary); border:1px solid var(--border-glow); border-radius:10px; padding:20px; margin-bottom:16px; }
+    .eval-member-hdr { display:flex; align-items:center; gap:12px; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border-glow); }
+    .eval-avatar { width:44px; height:44px; border-radius:50%; border:2px solid var(--accent-cyan); overflow:hidden; background:var(--bg-card); display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0; }
+    .eval-avatar img { width:100%; height:100%; object-fit:cover; }
+    .trait-eval-row { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+    .trait-eval-label { width:130px; font-size:0.85rem; color:var(--text-secondary); flex-shrink:0; }
+    .eval-slider { flex:1; -webkit-appearance:none; height:4px; border-radius:2px; background:rgba(255,255,255,0.08); outline:none; cursor:pointer; }
+    .eval-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:var(--accent-cyan); box-shadow:0 0 8px var(--accent-cyan); cursor:pointer; }
+    .score-disp { width:38px; text-align:center; font-family:'Orbitron',monospace; font-size:0.9rem; color:var(--accent-green); font-weight:700; }
+  </style>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">EVALUATION CENTER</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="tabs mb-0">
+        <button class="tab-btn active" id="tabSubmitBtn" onclick="switchTab('submit')">⚔️ Submit Evaluation</button>
+        <button class="tab-btn" id="tabHistBtn" onclick="switchTab('history')">📋 Evaluation History</button>
+      </div>
+
+      <!-- SUBMIT TAB -->
+      <div id="tabSubmit" style="padding-top:24px;">
+        <!-- Step 1: Task selection -->
+        <div id="step1">
+          <div class="page-header" style="margin-bottom:20px;">
+            <div class="page-header-left"><h1>SELECT TASK</h1><p>Choose a task to evaluate your peers</p></div>
+          </div>
+          <div id="taskGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;"></div>
+        </div>
+        <!-- Step 2: Evaluation form -->
+        <div id="step2" style="display:none;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+            <button class="btn btn-sm" onclick="backToTasks()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">← Back</button>
+            <div>
+              <div id="selTaskName" class="card-title" style="margin:0;"></div>
+              <div id="selTaskDesc" style="font-size:0.8rem;color:var(--text-muted);"></div>
+            </div>
+          </div>
+          <div id="evalForm"></div>
+          <div id="submitRow" style="display:none;margin-top:20px;">
+            <button class="btn btn-success btn-lg" onclick="submitEval()">🚀 SUBMIT ALL EVALUATIONS</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORY TAB -->
+      <div id="tabHistory" style="display:none;padding-top:24px;">
+        <div class="page-header" style="margin-bottom:20px;">
+          <div class="page-header-left"><h1>EVALUATION HISTORY</h1><p>All peer evaluations — visible to everyone</p></div>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+          <select class="form-control" id="filterTask" onchange="loadHistory()" style="max-width:240px;"><option value="">All Tasks</option></select>
+          <select class="form-control" id="filterMember" onchange="loadHistory()" style="max-width:240px;"><option value="">All Members</option></select>
+        </div>
+        <div id="historyList"></div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, doc, getDoc, getDocs, addDoc, query, where, orderBy } from '../js/firebase-config.js';
+  import { requireAuth, initLayout, getActiveMembers, getEvalTraits, showToast, recalculateBadges } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error();
+  initLayout(session, 'evaluations', 'EVALUATIONS');
+
+  let tasks=[], members=[], traits=[], selectedTask=null, submittedTaskIds=new Set();
+
+  async function init() {
+    members = await getActiveMembers();
+    traits = await getEvalTraits();
+    const taskSnap = await getDocs(query(collection(db, 'tasks'), where('isActive','==',true)));
+    tasks = taskSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+    if (session.role==='member') {
+      const subSnap = await getDocs(query(collection(db,'evaluations'), where('evaluatorId','==',session.id)));
+      subSnap.forEach(d => submittedTaskIds.add(d.data().taskId));
+    }
+
+    renderTasks();
+    populateHistoryFilters();
+  }
+
+  function renderTasks() {
+    const grid = document.getElementById('taskGrid');
+    if (tasks.length===0) { grid.innerHTML='<div class="alert alert-info" style="grid-column:1/-1;">No active tasks yet. Admin will create tasks soon.</div>'; return; }
+    grid.innerHTML = tasks.map(t=>`
+      <div class="card task-card-sel" onclick="${submittedTaskIds.has(t.id)?'':` selectTask('${t.id}')`}">
+        <div style="font-family:'Orbitron',monospace;font-size:0.85rem;margin-bottom:6px;">${t.title}</div>
+        <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">${t.description||''}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          ${t.meetLink?`<a href="${t.meetLink}" target="_blank" class="btn btn-primary btn-sm" onclick="event.stopPropagation()">🎥 Meet</a>`:''}
+          ${t.driveLink?`<a href="${t.driveLink}" target="_blank" class="btn btn-success btn-sm" onclick="event.stopPropagation()">📁 Material</a>`:''}
+        </div>
+        ${submittedTaskIds.has(t.id)
+          ? `<div class="submitted-label">✅ Evaluation Submitted</div>`
+          : `<button class="btn btn-primary btn-sm">Evaluate Peers →</button>`}
+      </div>`).join('');
+  }
+
+  window.selectTask = function(id) {
+    selectedTask = tasks.find(t=>t.id===id);
+    document.getElementById('selTaskName').textContent = selectedTask.title;
+    document.getElementById('selTaskDesc').textContent = selectedTask.description||'';
+    document.getElementById('step1').style.display='none';
+    document.getElementById('step2').style.display='block';
+    buildEvalForm();
+  };
+
+  window.backToTasks = function() {
+    document.getElementById('step1').style.display='block';
+    document.getElementById('step2').style.display='none';
+    selectedTask = null;
+  };
+
+  function buildEvalForm() {
+    const others = members.filter(m => m.id !== session.id);
+    if (others.length===0) { document.getElementById('evalForm').innerHTML='<div class="alert alert-info">No other members to evaluate.</div>'; return; }
+    document.getElementById('evalForm').innerHTML = others.map(m=>`
+      <div class="eval-section">
+        <div class="eval-member-hdr">
+          <div class="eval-avatar">${m.profilePic?`<img src="${m.profilePic}"/>`:'🪖'}</div>
+          <div>
+            <div style="font-family:'Orbitron',monospace;font-size:0.85rem;">${m.name}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted);">${m.tagline||''}</div>
+          </div>
+        </div>
+        ${traits.map(trait=>`
+          <div class="trait-eval-row">
+            <div class="trait-eval-label">${trait}</div>
+            <input type="range" class="eval-slider" min="0" max="10" value="5"
+              id="s_${m.id}_${trait}" oninput="document.getElementById('sd_${m.id}_${trait}').textContent=this.value"/>
+            <div class="score-disp" id="sd_${m.id}_${trait}">5</div>
+          </div>`).join('')}
+        <div class="form-group mt-8">
+          <label class="form-label" style="font-size:0.65rem;">FEEDBACK (Optional)</label>
+          <textarea class="form-control" id="fb_${m.id}" rows="2" placeholder="Optional feedback for ${m.name}..."></textarea>
+        </div>
+      </div>`).join('');
+    document.getElementById('submitRow').style.display='block';
+  }
+
+  window.submitEval = async function() {
+    if (!selectedTask) return;
+    const others = members.filter(m=>m.id!==session.id);
+    try {
+      for (const m of others) {
+        const scores={};
+        traits.forEach(t=>{ scores[t]=parseInt(document.getElementById(`s_${m.id}_${t}`)?.value||'5'); });
+        const feedback = document.getElementById(`fb_${m.id}`)?.value||'';
+        await addDoc(collection(db,'evaluations'), {
+          evaluatorId:session.id, evaluatorName:session.name,
+          evaluatedId:m.id, evaluatedName:m.name,
+          taskId:selectedTask.id, taskName:selectedTask.title,
+          scores, feedback, submittedAt:new Date().toISOString()
+        });
+      }
+      submittedTaskIds.add(selectedTask.id);
+      showToast('✅ Evaluations submitted successfully!','success');
+      // Recalculate badges in background
+      recalculateBadges().catch(()=>{});
+      backToTasks();
+      renderTasks();
+    } catch(e) {
+      showToast('Error submitting. Try again.','error');
+      console.error(e);
+    }
+  };
+
+  function populateHistoryFilters() {
+    const taskSel=document.getElementById('filterTask');
+    const memSel=document.getElementById('filterMember');
+    tasks.forEach(t=>{ taskSel.innerHTML+=`<option value="${t.id}">${t.title}</option>`; });
+    members.forEach(m=>{ memSel.innerHTML+=`<option value="${m.id}">${m.name}</option>`; });
+  }
+
+  window.loadHistory = async function() {
+    const taskFilter=document.getElementById('filterTask').value;
+    const memFilter=document.getElementById('filterMember').value;
+    const snap = await getDocs(collection(db,'evaluations'));
+    let evals = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if (taskFilter) evals=evals.filter(e=>e.taskId===taskFilter);
+    if (memFilter) evals=evals.filter(e=>e.evaluatedId===memFilter);
+    evals.sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt));
+
+    const list=document.getElementById('historyList');
+    if (evals.length===0) { list.innerHTML='<div style="color:var(--text-muted);padding:20px;">No evaluations found.</div>'; return; }
+    list.innerHTML = evals.map(e=>`
+      <div class="card mb-16 fade-in">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div>
+            <span style="font-family:'Orbitron',monospace;font-size:0.8rem;color:var(--accent-cyan);">${e.taskName}</span>
+            <span style="color:var(--text-muted);margin:0 6px;">·</span>
+            <span style="font-size:0.85rem;">By <strong>${e.evaluatorName}</strong> → <strong>${e.evaluatedName}</strong></span>
+          </div>
+          <span style="font-size:0.75rem;color:var(--text-muted);">${new Date(e.submittedAt).toLocaleDateString('en-IN')}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          ${Object.entries(e.scores||{}).map(([t,s])=>`
+            <div style="background:rgba(0,180,255,0.08);border:1px solid rgba(0,180,255,0.2);border-radius:4px;padding:3px 10px;font-size:0.78rem;color:var(--text-secondary);">
+              ${t}: <span style="color:var(--accent-cyan);font-weight:600;">${s}/10</span>
+            </div>`).join('')}
+        </div>
+        ${e.feedback?`<div style="font-size:0.84rem;color:var(--text-secondary);font-style:italic;border-top:1px solid var(--border-glow);padding-top:8px;">"${e.feedback}"</div>`:''}
+      </div>`).join('');
+  };
+
+  window.switchTab = function(tab) {
+    document.getElementById('tabSubmit').style.display = tab==='submit'?'block':'none';
+    document.getElementById('tabHistory').style.display = tab==='history'?'block':'none';
+    document.getElementById('tabSubmitBtn').classList.toggle('active', tab==='submit');
+    document.getElementById('tabHistBtn').classList.toggle('active', tab==='history');
+    if (tab==='history') loadHistory();
+  };
+
+  init();
+</script>
+</body>
+</html>

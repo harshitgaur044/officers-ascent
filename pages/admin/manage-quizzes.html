@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manage Quizzes — Admin</title>
+  <link rel="stylesheet" href="../../css/style.css"/>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title" style="color:var(--accent-gold);">MANAGE QUIZZES</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left"><h1>MANAGE QUIZZES</h1><p>Create quizzes and add MCQ questions</p></div>
+        <button class="btn btn-gold" onclick="showCreateQuiz()">+ NEW QUIZ</button>
+      </div>
+
+      <!-- Create Quiz Form -->
+      <div class="card mb-24 hidden" id="createQuizForm">
+        <div class="card-title" style="color:var(--accent-gold);">📝 CREATE QUIZ</div>
+        <div class="form-group"><label class="form-label">Quiz Title *</label><input type="text" class="form-control" id="quizTitle" placeholder="e.g. Current Affairs Week 1"/></div>
+        <div class="form-group"><label class="form-label">Time Limit (minutes)</label><input type="number" class="form-control" id="quizTime" value="15" min="1" max="180"/></div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn btn-gold" onclick="createQuiz()">Create Quiz & Add Questions →</button>
+          <button class="btn" onclick="document.getElementById('createQuizForm').classList.add('hidden')" style="border:1px solid var(--border-glow);color:var(--text-secondary);">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Add Questions Form -->
+      <div class="card mb-24 hidden" id="addQuestionsForm">
+        <div class="card-title" style="color:var(--accent-gold);" id="addQTitle"></div>
+        <div id="questionsList" style="margin-bottom:20px;"></div>
+        <div class="card" style="border-color:rgba(0,255,136,0.2);">
+          <div class="card-title green">+ ADD QUESTION</div>
+          <div class="form-group"><label class="form-label">Question *</label><textarea class="form-control" id="qText" rows="2" placeholder="Enter question..."></textarea></div>
+          <div class="grid-2">
+            <div class="form-group"><label class="form-label">Option A</label><input type="text" class="form-control" id="qA" placeholder="Option A"/></div>
+            <div class="form-group"><label class="form-label">Option B</label><input type="text" class="form-control" id="qB" placeholder="Option B"/></div>
+            <div class="form-group"><label class="form-label">Option C</label><input type="text" class="form-control" id="qC" placeholder="Option C"/></div>
+            <div class="form-group"><label class="form-label">Option D</label><input type="text" class="form-control" id="qD" placeholder="Option D"/></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Correct Answer</label>
+            <select class="form-control" id="qCorrect"><option value="a">A</option><option value="b">B</option><option value="c">C</option><option value="d">D</option></select>
+          </div>
+          <button class="btn btn-success" onclick="addQuestion()">+ Add Question</button>
+        </div>
+        <div style="margin-top:16px;">
+          <button class="btn btn-gold" onclick="doneAddingQuestions()">✅ Done — Back to Quiz List</button>
+        </div>
+      </div>
+
+      <!-- Quizzes List -->
+      <div id="quizzesList" style="display:flex;flex-direction:column;gap:16px;"></div>
+    </div>
+  </main>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where } from '../../js/firebase-config.js';
+  import { requireAuth, initLayout, showToast } from '../../js/app.js';
+
+  const session = requireAuth('admin');
+  if (!session) throw new Error();
+  initLayout(session, 'manage-quizzes', 'MANAGE QUIZZES');
+
+  let activeQuizId = null;
+
+  async function loadQuizzes() {
+    const snap = await getDocs(collection(db, 'quizzes'));
+    const quizzes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const list = document.getElementById('quizzesList');
+    if (quizzes.length === 0) { list.innerHTML = '<div class="alert alert-info">No quizzes yet. Create your first quiz!</div>'; return; }
+
+    list.innerHTML = '';
+    for (const q of quizzes) {
+      const qSnap = await getDocs(query(collection(db, 'quiz_questions'), where('quizId','==',q.id)));
+      const attSnap = await getDocs(query(collection(db, 'quiz_results'), where('quizId','==',q.id)));
+      const div = document.createElement('div');
+      div.className = 'card fade-in';
+      div.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="font-family:'Orbitron',monospace;font-size:0.9rem;margin-bottom:6px;">${q.title}</div>
+            <div style="display:flex;gap:12px;font-size:0.8rem;color:var(--text-secondary);">
+              <span>⏱ ${q.timeLimit} min</span>
+              <span>❓ ${qSnap.size} questions</span>
+              <span>👤 ${attSnap.size} attempts</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-success btn-sm" onclick="manageQuestions('${q.id}','${q.title}')">📝 Questions</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteQuiz('${q.id}')">🗑️</button>
+          </div>
+        </div>`;
+      list.appendChild(div);
+    }
+  }
+
+  window.showCreateQuiz = function() {
+    document.getElementById('createQuizForm').classList.remove('hidden');
+    document.getElementById('addQuestionsForm').classList.add('hidden');
+  };
+
+  window.createQuiz = async function() {
+    const title = document.getElementById('quizTitle').value.trim();
+    const timeLimit = parseInt(document.getElementById('quizTime').value) || 15;
+    if (!title) { showToast('Quiz title required', 'error'); return; }
+    const ref = await addDoc(collection(db, 'quizzes'), { title, timeLimit, questionCount: 0, createdAt: new Date().toISOString() });
+    showToast('Quiz created! Now add questions.', 'success');
+    document.getElementById('createQuizForm').classList.add('hidden');
+    manageQuestions(ref.id, title);
+    loadQuizzes();
+  };
+
+  window.manageQuestions = async function(quizId, quizTitle) {
+    activeQuizId = quizId;
+    document.getElementById('addQTitle').textContent = `📝 QUESTIONS FOR: ${quizTitle}`;
+    document.getElementById('addQuestionsForm').classList.remove('hidden');
+    document.getElementById('quizzesList').classList.add('hidden');
+    document.getElementById('createQuizForm').classList.add('hidden');
+    loadQuestionsList();
+  };
+
+  async function loadQuestionsList() {
+    const snap = await getDocs(query(collection(db, 'quiz_questions'), where('quizId','==',activeQuizId)));
+    const qs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    document.getElementById('questionsList').innerHTML = qs.length === 0 ? '<div style="color:var(--text-muted);margin-bottom:12px;">No questions yet.</div>' :
+      qs.map((q,i) => `
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-glow);border-radius:8px;padding:14px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="flex:1;">
+              <div style="font-size:0.9rem;margin-bottom:6px;">${i+1}. ${q.question}</div>
+              <div style="font-size:0.8rem;color:var(--text-muted);">A: ${q.option_a} · B: ${q.option_b} · C: ${q.option_c} · D: ${q.option_d}</div>
+              <div style="font-size:0.8rem;margin-top:4px;">Correct: <span style="color:var(--accent-green);font-weight:600;">${q.correct_option?.toUpperCase()}</span></div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="deleteQuestion('${q.id}')">🗑️</button>
+          </div>
+        </div>`).join('');
+  }
+
+  window.addQuestion = async function() {
+    const q = document.getElementById('qText').value.trim();
+    const a = document.getElementById('qA').value.trim();
+    const b = document.getElementById('qB').value.trim();
+    const c = document.getElementById('qC').value.trim();
+    const d = document.getElementById('qD').value.trim();
+    const correct = document.getElementById('qCorrect').value;
+    if (!q || !a || !b) { showToast('Question, Option A and B are required', 'error'); return; }
+    await addDoc(collection(db, 'quiz_questions'), { quizId: activeQuizId, question: q, option_a: a, option_b: b, option_c: c, option_d: d, correct_option: correct });
+    ['qText','qA','qB','qC','qD'].forEach(id => document.getElementById(id).value='');
+    showToast('Question added!', 'success');
+    loadQuestionsList();
+  };
+
+  window.deleteQuestion = async function(id) {
+    if (!confirm('Delete this question?')) return;
+    await deleteDoc(doc(db, 'quiz_questions', id));
+    showToast('Question deleted', 'success');
+    loadQuestionsList();
+  };
+
+  window.doneAddingQuestions = function() {
+    document.getElementById('addQuestionsForm').classList.add('hidden');
+    document.getElementById('quizzesList').classList.remove('hidden');
+    activeQuizId = null;
+    loadQuizzes();
+  };
+
+  window.deleteQuiz = async function(id) {
+    if (!confirm('Delete this quiz and all its questions? Cannot be undone.')) return;
+    const qSnap = await getDocs(query(collection(db, 'quiz_questions'), where('quizId','==',id)));
+    for (const q of qSnap.docs) await deleteDoc(q.ref);
+    await deleteDoc(doc(db, 'quizzes', id));
+    showToast('Quiz deleted', 'success');
+    loadQuizzes();
+  };
+
+  loadQuizzes();
+</script>
+</body>
+</html>

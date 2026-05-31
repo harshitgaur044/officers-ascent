@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Profile — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .profile-hero { background:linear-gradient(135deg,rgba(0,180,255,0.08),rgba(0,255,136,0.04)); border:1px solid var(--border-glow); border-radius:12px; padding:28px; display:flex; gap:24px; align-items:flex-start; margin-bottom:24px; flex-wrap:wrap; }
+    .profile-avatar-wrapper { position:relative; flex-shrink:0; }
+    .profile-avatar { width:110px; height:110px; border-radius:50%; border:3px solid var(--accent-cyan); overflow:hidden; background:var(--bg-secondary); display:flex; align-items:center; justify-content:center; font-size:3rem; box-shadow:0 0 25px rgba(0,180,255,0.3); }
+    .profile-avatar img { width:100%; height:100%; object-fit:cover; }
+    .upload-btn { position:absolute; bottom:0; right:0; background:var(--accent-cyan); border:2px solid var(--bg-primary); color:var(--bg-primary); border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.85rem; transition:all 0.2s; }
+    .upload-btn:hover { transform:scale(1.15); }
+    .profile-info { flex:1; min-width:200px; }
+    .profile-name { font-family:'Orbitron',monospace; font-size:1.3rem; letter-spacing:2px; margin-bottom:8px; }
+    .profile-tagline-area { display:flex; align-items:center; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+    .profile-tagline-text { font-size:0.95rem; color:var(--accent-cyan); font-style:italic; cursor:pointer; border-bottom:1px dashed rgba(0,180,255,0.4); padding-bottom:2px; }
+    .tagline-input { flex:1; min-width:180px; background:var(--bg-secondary); border:1px solid var(--accent-cyan); border-radius:4px; color:var(--text-primary); padding:6px 10px; font-family:'Rajdhani',sans-serif; font-size:0.95rem; }
+    .profile-stats-row { display:flex; gap:24px; flex-wrap:wrap; }
+    .pstat { text-align:center; }
+    .pstat-val { font-family:'Orbitron',monospace; font-size:1.3rem; color:var(--accent-green); font-weight:700; }
+    .pstat-label { font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; }
+    .trait-row { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+    .trait-label { width:130px; font-size:0.85rem; color:var(--text-secondary); flex-shrink:0; }
+    .trait-track { flex:1; height:8px; background:rgba(255,255,255,0.05); border-radius:4px; overflow:hidden; }
+    .trait-fill { height:100%; border-radius:4px; background:linear-gradient(90deg,var(--accent-cyan),var(--accent-green)); transition:width 1s ease; }
+    .trait-score { width:36px; text-align:right; font-family:'Orbitron',monospace; font-size:0.85rem; color:var(--accent-green); }
+    .eval-item { background:var(--bg-secondary); border:1px solid var(--border-glow); border-radius:8px; padding:14px; margin-bottom:10px; }
+    .eval-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px; }
+    .score-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+    .chip { background:rgba(0,180,255,0.08); border:1px solid rgba(0,180,255,0.2); border-radius:4px; padding:3px 8px; font-size:0.75rem; color:var(--text-secondary); }
+    .chip span { color:var(--accent-cyan); font-weight:600; }
+    .journal-box { background:rgba(255,215,0,0.03); border:1px solid rgba(255,215,0,0.2); border-radius:10px; padding:20px; margin-bottom:24px; }
+    .pin-box { background:rgba(0,180,255,0.03); border:1px solid rgba(0,180,255,0.2); border-radius:10px; padding:20px; margin-bottom:24px; }
+  </style>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">MEMBER PROFILE</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div id="profileContent" style="color:var(--text-muted);padding:40px;text-align:center;">Loading profile...</div>
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+<input type="file" id="picUpload" accept="image/*" style="display:none"/>
+
+<script type="module">
+  import { db, storage, ref, uploadBytes, getDownloadURL, collection, doc, getDoc, getDocs, updateDoc, setDoc, addDoc, query, where, orderBy } from '../js/firebase-config.js';
+  import { requireAuth, initLayout, getMemberEvalAvg, getAttendancePercent, getEvalTraits, showToast } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error('Not authenticated');
+  initLayout(session, 'profile', 'PROFILE');
+
+  const params = new URLSearchParams(window.location.search);
+  const profileId = params.get('id') || session.id;
+  const isOwnProfile = session.id === profileId;
+  const isAdmin = session.role === 'admin';
+  const canEditProfile = isOwnProfile || isAdmin;
+  const canEditTagline = isOwnProfile; // only own member
+
+  let memberData = null;
+  let traits = [];
+
+  async function loadProfile() {
+    const snap = await getDoc(doc(db, 'members', profileId));
+    if (!snap.exists()) {
+      document.getElementById('profileContent').innerHTML = '<div class="alert alert-error">Member not found.</div>';
+      return;
+    }
+    memberData = { id: snap.id, ...snap.data() };
+    traits = await getEvalTraits();
+
+    const evalData = await getMemberEvalAvg(profileId);
+    const attPercent = await getAttendancePercent(profileId);
+
+    // Quiz stats
+    const quizSnap = await getDocs(query(collection(db, 'quiz_results'), where('memberId','==',profileId)));
+    const quizAvg = quizSnap.empty ? 0 : Math.round(quizSnap.docs.reduce((s,d)=>s+d.data().score,0)/quizSnap.size);
+
+    // Attendance streak
+    const attSnap = await getDocs(query(collection(db, 'attendance'), where('memberId','==',profileId)));
+    const attDates = attSnap.docs.map(d=>d.data().date).sort().reverse();
+    let streak = 0;
+    const now = new Date();
+    for (let i = 0; i < attDates.length; i++) {
+      const diff = Math.floor((now - new Date(attDates[i]))/86400000);
+      if (diff <= i+1) streak++; else break;
+    }
+
+    // Tasks completed (unique tasks evaluated)
+    const evalGivenSnap = await getDocs(query(collection(db, 'evaluations'), where('evaluatorId','==',profileId)));
+    const tasksCompleted = new Set(evalGivenSnap.docs.map(d=>d.data().taskId)).size;
+
+    // Badges
+    const badgesSnap = await getDocs(query(collection(db, 'badges'), where('memberId','==',profileId)));
+    const badges = badgesSnap.docs.map(d=>d.data());
+
+    // Evaluations received
+    const evalRecSnap = await getDocs(query(collection(db, 'evaluations'), where('evaluatedId','==',profileId)));
+    const evalsReceived = evalRecSnap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt));
+
+    renderProfile(memberData, evalData, attPercent, quizAvg, streak, tasksCompleted, badges, evalsReceived);
+  }
+
+  function renderProfile(m, evalData, attPercent, quizAvg, streak, tasksCompleted, badges, evalsReceived) {
+    const avatarHtml = m.profilePic
+      ? `<img src="${m.profilePic}" alt="${m.name}" id="avatarImg"/>`
+      : `<span id="avatarEmoji">🪖</span>`;
+
+    const taglineHtml = canEditTagline
+      ? `<span class="profile-tagline-text" id="taglineDisplay" onclick="editTagline()" title="Click to edit">${m.tagline||'+ Add your tagline...'}</span>
+         <button class="btn btn-primary btn-sm" onclick="editTagline()" style="padding:4px 10px;font-size:0.7rem;">✏️ Edit</button>`
+      : `<span class="profile-tagline-text" style="cursor:default;">${m.tagline||'No tagline set'}</span>`;
+
+    const traitBars = traits.map(t => {
+      const score = evalData.traits[t]||0;
+      return `<div class="trait-row">
+        <div class="trait-label">${t}</div>
+        <div class="trait-track"><div class="trait-fill" style="width:${Math.min(score*10,100)}%"></div></div>
+        <div class="trait-score">${score>0?score.toFixed(1):'—'}</div>
+      </div>`;
+    }).join('');
+
+    const evalHistHtml = evalsReceived.length===0
+      ? '<div style="color:var(--text-muted);padding:12px 0;">No evaluations received yet.</div>'
+      : evalsReceived.slice(0,15).map(e=>`
+        <div class="eval-item">
+          <div class="eval-header">
+            <span style="font-size:0.85rem;font-weight:600;">Task: <span style="color:var(--accent-cyan)">${e.taskName||'Unknown'}</span></span>
+            <span style="font-size:0.75rem;color:var(--text-muted);">By ${e.evaluatorName||'?'} · ${new Date(e.submittedAt).toLocaleDateString('en-IN')}</span>
+          </div>
+          <div class="score-chips">
+            ${Object.entries(e.scores||{}).map(([t,s])=>`<div class="chip">${t}: <span>${s}/10</span></div>`).join('')}
+          </div>
+          ${e.feedback?`<div style="margin-top:8px;font-size:0.84rem;color:var(--text-secondary);font-style:italic;border-top:1px solid var(--border-glow);padding-top:8px;">"${e.feedback}"</div>`:''}
+        </div>`).join('');
+
+    document.getElementById('profileContent').innerHTML = `
+      <!-- PROFILE HERO -->
+      <div class="profile-hero">
+        <div class="profile-avatar-wrapper">
+          <div class="profile-avatar">${avatarHtml}</div>
+          ${canEditProfile ? `<div class="upload-btn" onclick="document.getElementById('picUpload').click()" title="Change photo">📷</div>` : ''}
+        </div>
+        <div class="profile-info">
+          <div class="profile-name">${m.name}</div>
+          <div class="profile-tagline-area" id="taglineArea">${taglineHtml}</div>
+          <div class="profile-stats-row">
+            <div class="pstat"><div class="pstat-val">${evalData.total>0?evalData.total.toFixed(1):'—'}</div><div class="pstat-label">Avg Score</div></div>
+            <div class="pstat"><div class="pstat-val" style="color:var(--accent-cyan)">${attPercent}%</div><div class="pstat-label">Attendance</div></div>
+            <div class="pstat"><div class="pstat-val" style="color:var(--accent-gold)">${quizAvg>0?quizAvg+'%':'—'}</div><div class="pstat-label">Quiz Avg</div></div>
+            <div class="pstat"><div class="pstat-val">${streak}</div><div class="pstat-label">Streak</div></div>
+            <div class="pstat"><div class="pstat-val" style="color:var(--accent-green)">${tasksCompleted}</div><div class="pstat-label">Tasks Done</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BADGES -->
+      ${badges.length>0?`
+      <div class="card mb-24">
+        <div class="card-title">🎖️ ACHIEVEMENTS</div>
+        <div class="achievements-grid">${badges.map(b=>`<div class="achievement-badge">${b.icon||'🏅'} ${b.badge_name}</div>`).join('')}</div>
+      </div>`:''}
+
+      <!-- PERFORMANCE + RADAR -->
+      <div class="grid-2 mb-24">
+        <div class="card">
+          <div class="card-title">📊 PERFORMANCE BREAKDOWN</div>
+          ${traitBars||'<div style="color:var(--text-muted);">No evaluation data yet.</div>'}
+        </div>
+        <div class="card">
+          <div class="card-title">🕸️ RADAR CHART</div>
+          <div class="chart-wrapper"><canvas id="radarChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- CHANGE PIN (own profile only) -->
+      ${isOwnProfile && !isAdmin ? `
+      <div class="pin-box mb-24">
+        <div class="card-title" style="color:var(--accent-cyan);">🔑 CHANGE YOUR PIN</div>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+            <label class="form-label">Current PIN</label>
+            <input type="password" class="form-control" id="currentPin" maxlength="4" placeholder="••••" inputmode="numeric"/>
+          </div>
+          <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+            <label class="form-label">New PIN</label>
+            <input type="password" class="form-control" id="newPin" maxlength="4" placeholder="••••" inputmode="numeric"/>
+          </div>
+          <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+            <label class="form-label">Confirm New PIN</label>
+            <input type="password" class="form-control" id="confirmPin" maxlength="4" placeholder="••••" inputmode="numeric"/>
+          </div>
+          <button class="btn btn-primary" onclick="changePin()">🔐 Update PIN</button>
+        </div>
+      </div>` : ''}
+
+      <!-- PRIVATE JOURNAL (own only) -->
+      ${isOwnProfile && !isAdmin ? `
+      <div class="journal-box mb-24">
+        <div class="card-title" style="color:var(--accent-gold);">📓 PRIVATE JOURNAL <span style="font-size:0.65rem;color:var(--text-muted);font-family:'Rajdhani',sans-serif;font-weight:400;">(Only you can see this)</span></div>
+        <textarea class="form-control" id="journalText" rows="6" placeholder="Self-reflection, daily targets, SSB prep notes... (completely private)"></textarea>
+        <button class="btn btn-gold btn-sm mt-8" onclick="saveJournal()">💾 Save Journal</button>
+      </div>` : ''}
+
+      <!-- EVALUATIONS RECEIVED -->
+      <div class="card mb-24">
+        <div class="card-title">📋 EVALUATIONS RECEIVED (${evalsReceived.length})</div>
+        ${evalHistHtml}
+      </div>
+    `;
+
+    // Load journal
+    if (isOwnProfile && !isAdmin) loadJournal();
+
+    // Radar chart
+    buildRadarChart(evalData);
+  }
+
+  function buildRadarChart(evalData) {
+    const ctx = document.getElementById('radarChart');
+    if (!ctx) return;
+    const scores = traits.map(t => evalData.traits[t]||0);
+    new Chart(ctx, {
+      type: 'radar',
+      data: {
+        labels: traits,
+        datasets: [{
+          label: 'Score',
+          data: scores,
+          borderColor: '#00b4ff',
+          backgroundColor: 'rgba(0,180,255,0.12)',
+          pointBackgroundColor: '#00ff88',
+          pointBorderColor: '#00ff88',
+          pointRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { r: {
+          beginAtZero: true, max: 10,
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          ticks: { color: '#445566', font: { size: 9 }, stepSize: 2 },
+          pointLabels: { color: '#8899aa', font: { size: 11 } }
+        }},
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  async function loadJournal() {
+    try {
+      const snap = await getDoc(doc(db, 'journals', profileId));
+      if (snap.exists()) document.getElementById('journalText').value = snap.data().text||'';
+    } catch(e) {}
+  }
+
+  window.saveJournal = async function() {
+    const text = document.getElementById('journalText').value;
+    await setDoc(doc(db, 'journals', profileId), { text, updatedAt: new Date().toISOString() });
+    showToast('Journal saved! ✅', 'success');
+  };
+
+  window.editTagline = function() {
+    const area = document.getElementById('taglineArea');
+    area.innerHTML = `
+      <input class="tagline-input" id="taglineInput" maxlength="100" value="${memberData.tagline||''}" placeholder="Your personal tagline (max 100 chars)..."/>
+      <button class="btn btn-success btn-sm" onclick="saveTagline()">Save</button>
+      <button class="btn btn-sm" onclick="cancelTagline()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">Cancel</button>
+    `;
+    document.getElementById('taglineInput').focus();
+  };
+
+  window.saveTagline = async function() {
+    const val = document.getElementById('taglineInput').value.trim();
+    await updateDoc(doc(db, 'members', profileId), { tagline: val });
+    memberData.tagline = val;
+    showToast('Tagline updated! ✅', 'success');
+    resetTaglineDisplay();
+  };
+
+  window.cancelTagline = function() { resetTaglineDisplay(); };
+
+  function resetTaglineDisplay() {
+    const area = document.getElementById('taglineArea');
+    area.innerHTML = `<span class="profile-tagline-text" id="taglineDisplay" onclick="editTagline()" title="Click to edit">${memberData.tagline||'+ Add your tagline...'}</span>
+      <button class="btn btn-primary btn-sm" onclick="editTagline()" style="padding:4px 10px;font-size:0.7rem;">✏️ Edit</button>`;
+  }
+
+  window.changePin = async function() {
+    const cur = document.getElementById('currentPin').value;
+    const nw = document.getElementById('newPin').value;
+    const conf = document.getElementById('confirmPin').value;
+    if (cur !== memberData.pin) { showToast('Current PIN is incorrect', 'error'); return; }
+    if (nw.length !== 4 || isNaN(nw)) { showToast('New PIN must be exactly 4 digits', 'error'); return; }
+    if (nw !== conf) { showToast('New PINs do not match', 'error'); return; }
+    await updateDoc(doc(db, 'members', profileId), { pin: nw });
+    memberData.pin = nw;
+    showToast('PIN changed successfully! ✅', 'success');
+    ['currentPin','newPin','confirmPin'].forEach(id => document.getElementById(id).value='');
+  };
+
+  // Profile picture upload
+  document.getElementById('picUpload').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5*1024*1024) { showToast('File too large. Max 5MB.', 'error'); return; }
+    showToast('Uploading photo...', 'info');
+    try {
+      const sRef = ref(storage, `profiles/${profileId}_${Date.now()}`);
+      await uploadBytes(sRef, file);
+      const url = await getDownloadURL(sRef);
+      await updateDoc(doc(db, 'members', profileId), { profilePic: url });
+      memberData.profilePic = url;
+      const el = document.querySelector('.profile-avatar');
+      el.innerHTML = `<img src="${url}" alt="avatar" style="width:100%;height:100%;object-fit:cover;"/>`;
+      // Update session if own profile
+      if (isOwnProfile) {
+        const sess = JSON.parse(sessionStorage.getItem('oa_session'));
+        if (sess) { sess.profilePic = url; sessionStorage.setItem('oa_session', JSON.stringify(sess)); }
+      }
+      showToast('Profile photo updated! ✅', 'success');
+    } catch (err) {
+      showToast('Upload failed. Check Firebase Storage is enabled.', 'error');
+      console.error(err);
+    }
+  });
+
+  loadProfile();
+</script>
+</body>
+</html>

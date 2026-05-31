@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    /* ── HERO SECTION ── */
+    .hero {
+      position: relative;
+      height: 420px;
+      overflow: hidden;
+      border-radius: 12px;
+      margin-bottom: 30px;
+    }
+
+    .hero-slides { position: absolute; inset: 0; }
+
+    .hero-slide {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      opacity: 0;
+      transition: opacity 1.2s ease;
+    }
+
+    .hero-slide.active { opacity: 1; }
+
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(10,14,26,0.85) 0%, rgba(10,14,26,0.4) 60%, rgba(10,14,26,0.7) 100%);
+      z-index: 1;
+    }
+
+    /* Scanline on hero */
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,180,255,0.02) 3px, rgba(0,180,255,0.02) 4px);
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* Animated jets on hero */
+    .hero-jet {
+      position: absolute;
+      z-index: 3;
+      font-size: 2rem;
+      filter: drop-shadow(0 0 10px #00b4ff);
+      opacity: 0.7;
+    }
+
+    .hero-jet-1 {
+      top: 20%;
+      animation: heroFly1 12s linear infinite;
+      transform: rotate(-10deg);
+    }
+
+    .hero-jet-2 {
+      top: 55%;
+      animation: heroFly2 16s linear infinite;
+      transform: rotate(-8deg) scaleX(-1);
+      animation-delay: -5s;
+    }
+
+    @keyframes heroFly1 { from { left: -8%; } to { left: 108%; } }
+    @keyframes heroFly2 { from { left: 108%; } to { left: -8%; } }
+
+    /* Radar on hero */
+    .hero-radar {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 100px;
+      height: 100px;
+      z-index: 4;
+      opacity: 0.5;
+    }
+
+    .hero-radar-circle {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid var(--accent-cyan);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .hero-radar-circle:nth-child(1) { width: 100px; height: 100px; }
+    .hero-radar-circle:nth-child(2) { width: 66px; height: 66px; }
+    .hero-radar-circle:nth-child(3) { width: 33px; height: 33px; }
+
+    .hero-radar-line {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 50px; height: 1px;
+      background: linear-gradient(90deg, var(--accent-green), transparent);
+      transform-origin: 0 50%;
+      animation: radar-spin 3s linear infinite;
+    }
+
+    .hero-content {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 40px;
+    }
+
+    .hero-eyebrow {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--accent-green);
+      letter-spacing: 4px;
+      margin-bottom: 12px;
+    }
+
+    .hero-title {
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      letter-spacing: 4px;
+      color: var(--text-primary);
+      line-height: 1.1;
+      margin-bottom: 12px;
+      text-shadow: 0 0 30px rgba(0,180,255,0.4);
+    }
+
+    .hero-subtitle {
+      font-size: 1rem;
+      color: var(--accent-cyan);
+      letter-spacing: 2px;
+      margin-bottom: 24px;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 500;
+    }
+
+    /* HUD data points on hero */
+    .hero-hud {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .hero-hud-item {
+      background: rgba(10,14,26,0.7);
+      border: 1px solid var(--border-glow);
+      border-radius: 6px;
+      padding: 8px 14px;
+      backdrop-filter: blur(4px);
+    }
+
+    .hero-hud-value {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.2rem;
+      color: var(--accent-green);
+      display: block;
+      line-height: 1;
+    }
+
+    .hero-hud-label {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* Slide indicators */
+    .hero-indicators {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 6;
+      display: flex;
+      gap: 8px;
+    }
+
+    .hero-dot {
+      width: 24px; height: 3px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.3);
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+
+    .hero-dot.active {
+      background: var(--accent-cyan);
+      box-shadow: 0 0 8px var(--accent-cyan);
+    }
+
+    /* ── QUICK NAV CARDS ── */
+    .quick-nav-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+
+    .quick-nav-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glow);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      text-decoration: none;
+      color: var(--text-primary);
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .quick-nav-card:hover {
+      border-color: var(--accent-cyan);
+      box-shadow: var(--shadow-cyan);
+      transform: translateY(-4px);
+      background: var(--bg-card-hover);
+    }
+
+    .quick-nav-icon {
+      font-size: 1.8rem;
+      display: block;
+      filter: drop-shadow(0 0 8px rgba(0,180,255,0.4));
+    }
+
+    .quick-nav-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 1px;
+      color: var(--accent-cyan);
+    }
+
+    /* ── LEADERBOARD PODIUM ── */
+    .podium {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 12px;
+      padding: 20px 0;
+    }
+
+    .podium-item {
+      text-align: center;
+      flex: 1;
+      max-width: 160px;
+    }
+
+    .podium-avatar {
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      margin: 0 auto 8px;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      border: 3px solid;
+    }
+
+    .podium-item:nth-child(1) .podium-avatar { border-color: #c0c0c0; }
+    .podium-item:nth-child(2) .podium-avatar { border-color: #ffd700; width: 72px; height: 72px; font-size: 1.8rem; }
+    .podium-item:nth-child(3) .podium-avatar { border-color: #cd7f32; }
+
+    .podium-name {
+      font-size: 0.8rem;
+      font-family: 'Orbitron', monospace;
+      margin-bottom: 4px;
+      font-size: 0.7rem;
+    }
+
+    .podium-score {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--accent-green);
+    }
+
+    .podium-base {
+      border-radius: 6px 6px 0 0;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Orbitron', monospace;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .podium-item:nth-child(1) .podium-base { height: 60px; background: linear-gradient(180deg, rgba(192,192,192,0.2), rgba(192,192,192,0.05)); border: 1px solid rgba(192,192,192,0.3); color: #c0c0c0; }
+    .podium-item:nth-child(2) .podium-base { height: 90px; background: linear-gradient(180deg, rgba(255,215,0,0.2), rgba(255,215,0,0.05)); border: 1px solid rgba(255,215,0,0.3); color: #ffd700; }
+    .podium-item:nth-child(3) .podium-base { height: 45px; background: linear-gradient(180deg, rgba(205,127,50,0.2), rgba(205,127,50,0.05)); border: 1px solid rgba(205,127,50,0.3); color: #cd7f32; }
+
+    /* ── TODAY'S TASK ── */
+    .task-card {
+      background: linear-gradient(135deg, rgba(0,180,255,0.05), rgba(0,255,136,0.03));
+      border: 1px solid var(--border-glow);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+
+    .task-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+
+    @media (max-width: 768px) {
+      .hero { height: 300px; }
+      .hero-content { padding: 24px; }
+      .hero-title { font-size: 1.5rem; }
+      .hero-hud { gap: 12px; }
+      .podium-item:nth-child(2) .podium-avatar { width: 60px; height: 60px; font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">COMMAND CENTER</span>
+      <div class="topbar-right">
+        <span class="topbar-time" id="topbarTime"></span>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- HERO -->
+      <div class="hero" id="heroSection">
+        <div class="hero-slides" id="heroSlides"></div>
+        <div class="hero-overlay"></div>
+        <div class="hero-jet hero-jet-1">✈</div>
+        <div class="hero-jet hero-jet-2">✈</div>
+        <div class="hero-radar">
+          <div class="hero-radar-circle"></div>
+          <div class="hero-radar-circle"></div>
+          <div class="hero-radar-circle"></div>
+          <div class="hero-radar-line"></div>
+        </div>
+        <div class="hero-content">
+          <div class="hero-eyebrow">⚡ SSB PREPARATION PLATFORM</div>
+          <h1 class="hero-title" id="heroTitle">THE OFFICER'S ASCENT</h1>
+          <p class="hero-subtitle" id="heroSubtitle">TURNING POTENTIAL INTO LEADERSHIP</p>
+          <div class="hero-hud">
+            <div class="hero-hud-item">
+              <span class="hero-hud-value" id="hudMembers">—</span>
+              <span class="hero-hud-label">Active Members</span>
+            </div>
+            <div class="hero-hud-item">
+              <span class="hero-hud-value" id="hudAttendance">—</span>
+              <span class="hero-hud-label">Today's Attendance</span>
+            </div>
+            <div class="hero-hud-item">
+              <span class="hero-hud-value" id="hudTasks">—</span>
+              <span class="hero-hud-label">Active Tasks</span>
+            </div>
+          </div>
+        </div>
+        <div class="hero-indicators" id="heroIndicators"></div>
+      </div>
+
+      <!-- ANNOUNCEMENT -->
+      <div id="announcementBanner" class="hidden"></div>
+
+      <!-- TODAY'S TASK -->
+      <div id="todayTaskSection" class="hidden">
+        <div class="task-card">
+          <div class="card-title">📌 TODAY'S ACTIVE TASKS</div>
+          <div id="taskList"></div>
+        </div>
+      </div>
+
+      <!-- QUICK STATS -->
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-value" id="statMembers">—</div>
+          <div class="stat-label">Total Members</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value green" id="statAttendance">—</div>
+          <div class="stat-label">Today Attended</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value gold" id="statTopPerformer">—</div>
+          <div class="stat-label">Top Performer</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statQuizChamp">—</div>
+          <div class="stat-label">Quiz Champion</div>
+        </div>
+      </div>
+
+      <!-- QUICK NAV -->
+      <div class="card mb-30">
+        <div class="card-title">⚡ QUICK ACCESS</div>
+        <div class="quick-nav-grid">
+          <a href="study.html" class="quick-nav-card"><span class="quick-nav-icon">📚</span><span class="quick-nav-label">Study Materials</span></a>
+          <a href="members.html" class="quick-nav-card"><span class="quick-nav-icon">👥</span><span class="quick-nav-label">Members</span></a>
+          <a href="evaluations.html" class="quick-nav-card"><span class="quick-nav-icon">⚔️</span><span class="quick-nav-label">Evaluations</span></a>
+          <a href="quiz.html" class="quick-nav-card"><span class="quick-nav-icon">🧠</span><span class="quick-nav-label">Quiz Center</span></a>
+          <a href="leaderboard.html" class="quick-nav-card"><span class="quick-nav-icon">🏆</span><span class="quick-nav-label">Leaderboard</span></a>
+          <a href="attendance.html" class="quick-nav-card"><span class="quick-nav-icon">📋</span><span class="quick-nav-label">Attendance</span></a>
+        </div>
+      </div>
+
+      <!-- LEADERBOARD PREVIEW -->
+      <div class="grid-2 mb-30">
+        <div class="card">
+          <div class="card-title">🏆 TOP PERFORMERS</div>
+          <div class="podium" id="podium">
+            <div style="text-align:center;color:var(--text-muted);padding:20px;">Loading...</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title green">📊 PLATFORM STATS</div>
+          <div id="platformStats" style="display:flex;flex-direction:column;gap:12px;padding-top:8px;"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, doc, getDoc, getDocs, query, where, orderBy } from '../js/firebase-config.js';
+  import { requireAuth, initLayout, getActiveMembers, getMemberEvalAvg, animateCounter } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error('Not authenticated');
+
+  initLayout(session, 'dashboard', 'DASHBOARD');
+
+  // Load hero images
+  async function loadHero() {
+    const snap = await getDoc(doc(db, 'settings', 'site'));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    document.getElementById('heroTitle').textContent = data.title || "THE OFFICER'S ASCENT";
+    document.getElementById('heroSubtitle').textContent = data.subtitle || 'TURNING POTENTIAL INTO LEADERSHIP';
+
+    const images = data.heroImages || [];
+    const slidesEl = document.getElementById('heroSlides');
+    const dotsEl = document.getElementById('heroIndicators');
+
+    images.forEach((url, i) => {
+      const slide = document.createElement('div');
+      slide.className = 'hero-slide' + (i === 0 ? ' active' : '');
+      slide.style.backgroundImage = `url('${url}')`;
+      slidesEl.appendChild(slide);
+
+      const dot = document.createElement('div');
+      dot.className = 'hero-dot' + (i === 0 ? ' active' : '');
+      dot.onclick = () => goToSlide(i);
+      dotsEl.appendChild(dot);
+    });
+
+    // Auto-slide
+    let current = 0;
+    function goToSlide(idx) {
+      const slides = slidesEl.querySelectorAll('.hero-slide');
+      const dots = dotsEl.querySelectorAll('.hero-dot');
+      slides[current].classList.remove('active');
+      dots[current].classList.remove('active');
+      current = idx;
+      slides[current].classList.add('active');
+      dots[current].classList.add('active');
+    }
+    window.goToSlide = goToSlide;
+    if (images.length > 1) {
+      setInterval(() => goToSlide((current + 1) % images.length), 5000);
+    }
+
+    // Announcement
+    if (data.announcement) {
+      const banner = document.getElementById('announcementBanner');
+      banner.innerHTML = `<div class="announcement-banner"><span class="announcement-icon">📢</span><span class="announcement-text">${data.announcement}</span></div>`;
+      banner.classList.remove('hidden');
+    }
+  }
+
+  // Load active tasks
+  async function loadTasks() {
+    const snap = await getDocs(query(collection(db, 'tasks'), where('isActive', '==', true)));
+    if (snap.empty) return;
+    const section = document.getElementById('todayTaskSection');
+    section.classList.remove('hidden');
+    const list = document.getElementById('taskList');
+    list.innerHTML = '';
+    snap.forEach(d => {
+      const t = d.data();
+      list.innerHTML += `
+        <div style="padding:12px 0;border-bottom:1px solid var(--border-glow);">
+          <div style="font-family:'Orbitron',monospace;font-size:0.85rem;color:var(--text-primary);margin-bottom:4px;">${t.title}</div>
+          <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px;">${t.description || ''}</div>
+          <div class="task-links">
+            ${t.meetLink ? `<a href="${t.meetLink}" target="_blank" class="btn btn-primary btn-sm">🎥 Join Meet</a>` : ''}
+            ${t.driveLink ? `<a href="${t.driveLink}" target="_blank" class="btn btn-success btn-sm">📁 Study Material</a>` : ''}
+          </div>
+        </div>`;
+    });
+    document.getElementById('hudTasks').textContent = snap.size;
+  }
+
+  // Load stats
+  async function loadStats() {
+    const members = await getActiveMembers();
+    const today = new Date().toISOString().split('T')[0];
+
+    const attSnap = await getDocs(query(collection(db, 'attendance'), where('date', '==', today)));
+    const todayAtt = attSnap.size;
+
+    document.getElementById('statMembers').textContent = members.length;
+    document.getElementById('statAttendance').textContent = todayAtt;
+    document.getElementById('hudMembers').textContent = members.length;
+    document.getElementById('hudAttendance').textContent = todayAtt;
+
+    // Top performer
+    let topMember = null, topScore = -1;
+    for (const m of members) {
+      const avg = await getMemberEvalAvg(m.id);
+      if (avg.total > topScore) { topScore = avg.total; topMember = m; }
+    }
+    if (topMember) document.getElementById('statTopPerformer').textContent = topMember.name.split(' ')[0];
+
+    // Quiz champion
+    const quizSnap = await getDocs(collection(db, 'quiz_results'));
+    const quizMap = {};
+    quizSnap.forEach(d => {
+      const r = d.data();
+      if (!quizMap[r.memberId]) quizMap[r.memberId] = [];
+      quizMap[r.memberId].push(r.score);
+    });
+    let quizChamp = null, quizHigh = -1;
+    for (const [mid, scores] of Object.entries(quizMap)) {
+      const avg = scores.reduce((a,b)=>a+b,0)/scores.length;
+      if (avg > quizHigh) { quizHigh = avg; quizChamp = mid; }
+    }
+    if (quizChamp) {
+      const m = members.find(m => m.id === quizChamp);
+      if (m) document.getElementById('statQuizChamp').textContent = m.name.split(' ')[0];
+    }
+
+    // Podium
+    const ranked = [];
+    for (const m of members) {
+      const avg = await getMemberEvalAvg(m.id);
+      ranked.push({ ...m, score: avg.total });
+    }
+    ranked.sort((a,b) => b.score - a.score);
+    const top3 = ranked.slice(0, 3);
+
+    const medals = ['🥈','🥇','🥉'];
+    const order = [top3[1], top3[0], top3[2]].filter(Boolean);
+    const medalsOrder = ['🥈','🥇','🥉'];
+
+    document.getElementById('podium').innerHTML = order.map((m, i) => `
+      <div class="podium-item">
+        <div class="podium-avatar">${m.profilePic ? `<img src="${m.profilePic}" style="width:100%;height:100%;object-fit:cover"/>` : '🪖'}</div>
+        <div class="podium-name">${m.name.split(' ')[0]}</div>
+        <div class="podium-score">${m.score > 0 ? m.score.toFixed(1) : 'N/A'}</div>
+        <div class="podium-base">${medalsOrder[i]}</div>
+      </div>
+    `).join('');
+
+    // Platform stats
+    const evalSnap = await getDocs(collection(db, 'evaluations'));
+    const quizResultSnap = await getDocs(collection(db, 'quiz_results'));
+    document.getElementById('platformStats').innerHTML = `
+      <div class="flex justify-between items-center">
+        <span class="text-secondary" style="font-size:0.9rem;">Total Evaluations</span>
+        <span class="hud-value">${evalSnap.size}</span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-secondary" style="font-size:0.9rem;">Quiz Attempts</span>
+        <span class="hud-value">${quizResultSnap.size}</span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-secondary" style="font-size:0.9rem;">Attendance Records</span>
+        <span class="hud-value">${attSnap.size}</span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-secondary" style="font-size:0.9rem;">Active Members</span>
+        <span class="hud-value" style="color:var(--accent-green);">${members.length}</span>
+      </div>
+    `;
+  }
+
+  // Init
+  loadHero();
+  loadTasks();
+  loadStats();
+</script>
+</body>
+</html>

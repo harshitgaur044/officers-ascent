@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>The Officer's Ascent</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <style>
+    .splash {
+      position: fixed; inset: 0;
+      background: var(--bg-primary);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    .splash-logo { font-size: 4rem; margin-bottom: 20px; animation: float 2s ease-in-out infinite; }
+    .splash-title { font-family: 'Orbitron', monospace; font-size: 1.4rem; letter-spacing: 4px; color: var(--accent-cyan); margin-bottom: 8px; }
+    .splash-sub { font-size: 0.8rem; color: var(--accent-green); letter-spacing: 2px; font-family: 'Share Tech Mono', monospace; margin-bottom: 32px; }
+    .splash-bar { width: 200px; height: 2px; background: rgba(255,255,255,0.1); border-radius: 1px; overflow: hidden; }
+    .splash-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); animation: load 1.5s ease forwards; }
+    @keyframes load { from { width: 0; } to { width: 100%; } }
+    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  </style>
+</head>
+<body>
+<div class="splash" id="splash">
+  <div class="splash-logo">⚔️</div>
+  <div class="splash-title">THE OFFICER'S ASCENT</div>
+  <div class="splash-sub">TURNING POTENTIAL INTO LEADERSHIP</div>
+  <div class="splash-bar"><div class="splash-bar-fill"></div></div>
+</div>
+
+<script type="module">
+  import { seedDatabase } from './js/seed.js';
+
+  async function init() {
+    await seedDatabase();
+    const session = JSON.parse(sessionStorage.getItem('oa_session') || 'null');
+    setTimeout(() => {
+      if (session) {
+        window.location.href = session.role === 'admin' ? 'pages/admin/admin-dashboard.html' : 'pages/dashboard.html';
+      } else {
+        window.location.href = 'pages/login.html';
+      }
+    }, 1800);
+  }
+  init();
+</script>
+</body>
+</html>

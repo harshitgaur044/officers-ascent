@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manage Study Materials — Admin</title>
+  <link rel="stylesheet" href="../../css/style.css"/>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title" style="color:var(--accent-gold);">STUDY MATERIALS</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left"><h1>MANAGE STUDY MATERIALS</h1><p>Add categories and Drive links</p></div>
+        <button class="btn btn-gold" onclick="openModal()">+ ADD MATERIAL</button>
+      </div>
+
+      <!-- Category Management -->
+      <div class="card mb-24">
+        <div class="card-title" style="color:var(--accent-gold);">📁 CATEGORIES</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;" id="categoryChips"></div>
+        <div style="display:flex;gap:10px;">
+          <input type="text" class="form-control" id="newCatInput" placeholder="Add new category..." style="max-width:240px;"/>
+          <button class="btn btn-gold btn-sm" onclick="addCategory()">+ Add</button>
+        </div>
+      </div>
+
+      <!-- Materials List -->
+      <div id="materialsList"></div>
+    </div>
+  </main>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="matModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="matModalTitle">📚 ADD MATERIAL</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Category *</label>
+      <select class="form-control" id="matCategory"></select>
+    </div>
+    <div class="form-group"><label class="form-label">Title *</label><input type="text" class="form-control" id="matTitle" placeholder="e.g. TAT Story Writing Guide"/></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="matDesc" rows="3" placeholder="Brief description..."></textarea></div>
+    <div class="form-group"><label class="form-label">Google Drive Link *</label><input type="url" class="form-control" id="matLink" placeholder="https://drive.google.com/..."/></div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn" onclick="closeModal()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">Cancel</button>
+      <button class="btn btn-gold" onclick="saveMaterial()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { db, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc } from '../../js/firebase-config.js';
+  import { requireAuth, initLayout, showToast } from '../../js/app.js';
+
+  const session = requireAuth('admin');
+  if (!session) throw new Error();
+  initLayout(session, 'manage-study', 'STUDY MATERIALS');
+
+  let categories = [], materials = [], editingId = null;
+
+  async function load() {
+    const catSnap = await getDoc(doc(db, 'settings', 'studyCategories'));
+    categories = catSnap.exists() ? catSnap.data().categories : ['Psychology','TAT','WAT','SRT','GTO','Interview','Lecturette','Current Affairs'];
+    const matSnap = await getDocs(collection(db, 'study_materials'));
+    materials = matSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderCategories();
+    renderMaterials();
+  }
+
+  function renderCategories() {
+    document.getElementById('categoryChips').innerHTML = categories.map(c => `
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(0,180,255,0.1);border:1px solid rgba(0,180,255,0.3);border-radius:20px;padding:6px 12px;">
+        <span style="font-size:0.85rem;color:var(--accent-cyan);">${c}</span>
+        <button onclick="removeCategory('${c}')" style="background:none;border:none;color:var(--accent-red);cursor:pointer;font-size:0.8rem;padding:0 2px;">✕</button>
+      </div>`).join('');
+
+    const sel = document.getElementById('matCategory');
+    sel.innerHTML = categories.map(c => `<option value="${c}">${c}</option>`).join('');
+  }
+
+  function renderMaterials() {
+    const byCategory = {};
+    categories.forEach(c => byCategory[c] = []);
+    materials.forEach(m => { if (byCategory[m.category]) byCategory[m.category].push(m); });
+
+    document.getElementById('materialsList').innerHTML = categories.map(cat => {
+      const items = byCategory[cat] || [];
+      return `
+        <div class="card mb-16">
+          <div class="card-title">${cat} <span style="font-size:0.75rem;color:var(--text-muted);">(${items.length} items)</span></div>
+          ${items.length === 0 ? '<div style="color:var(--text-muted);font-size:0.85rem;">No materials in this category yet.</div>' : ''}
+          ${items.map(m => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);gap:12px;">
+              <div>
+                <div style="font-size:0.9rem;font-weight:600;margin-bottom:2px;">${m.title}</div>
+                ${m.description ? `<div style="font-size:0.8rem;color:var(--text-secondary);">${m.description}</div>` : ''}
+                <a href="${m.driveLink}" target="_blank" style="font-size:0.75rem;color:var(--accent-cyan);">📁 ${m.driveLink.substring(0,40)}...</a>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0;">
+                <button class="btn btn-primary btn-sm" onclick="editMaterial('${m.id}')">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteMaterial('${m.id}')">🗑️</button>
+              </div>
+            </div>`).join('')}
+        </div>`;
+    }).join('');
+  }
+
+  window.addCategory = async function() {
+    const val = document.getElementById('newCatInput').value.trim();
+    if (!val || categories.includes(val)) { showToast(val ? 'Category already exists' : 'Enter a category name', 'error'); return; }
+    categories.push(val);
+    await setDoc(doc(db, 'settings', 'studyCategories'), { categories });
+    document.getElementById('newCatInput').value = '';
+    renderCategories();
+    showToast('Category added!', 'success');
+  };
+
+  window.removeCategory = async function(cat) {
+    if (!confirm(`Remove category "${cat}"? Materials in it will still exist.`)) return;
+    categories = categories.filter(c => c !== cat);
+    await setDoc(doc(db, 'settings', 'studyCategories'), { categories });
+    renderCategories();
+    showToast('Category removed', 'success');
+  };
+
+  window.openModal = function() {
+    editingId = null;
+    document.getElementById('matModalTitle').textContent = '📚 ADD MATERIAL';
+    ['matTitle','matDesc','matLink'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('matModal').classList.add('active');
+  };
+
+  window.editMaterial = function(id) {
+    editingId = id;
+    const m = materials.find(m => m.id === id);
+    document.getElementById('matModalTitle').textContent = '✏️ EDIT MATERIAL';
+    document.getElementById('matCategory').value = m.category;
+    document.getElementById('matTitle').value = m.title;
+    document.getElementById('matDesc').value = m.description || '';
+    document.getElementById('matLink').value = m.driveLink;
+    document.getElementById('matModal').classList.add('active');
+  };
+
+  window.saveMaterial = async function() {
+    const data = {
+      category: document.getElementById('matCategory').value,
+      title: document.getElementById('matTitle').value.trim(),
+      description: document.getElementById('matDesc').value.trim(),
+      driveLink: document.getElementById('matLink').value.trim()
+    };
+    if (!data.title || !data.driveLink) { showToast('Title and Drive link required', 'error'); return; }
+    try {
+      if (editingId) { await updateDoc(doc(db, 'study_materials', editingId), data); showToast('Material updated!', 'success'); }
+      else { await addDoc(collection(db, 'study_materials'), data); showToast('Material added!', 'success'); }
+      closeModal(); load();
+    } catch(e) { showToast('Error saving', 'error'); }
+  };
+
+  window.deleteMaterial = async function(id) {
+    if (!confirm('Delete this material?')) return;
+    await deleteDoc(doc(db, 'study_materials', id));
+    showToast('Deleted', 'success');
+    load();
+  };
+
+  window.closeModal = function() { document.getElementById('matModal').classList.remove('active'); };
+
+  load();
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manage Tasks — Admin</title>
+  <link rel="stylesheet" href="../../css/style.css"/>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title" style="color:var(--accent-gold);">MANAGE TASKS</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left"><h1>MANAGE TASKS</h1><p>Create and manage evaluation tasks</p></div>
+        <button class="btn btn-gold" onclick="openModal()">+ NEW TASK</button>
+      </div>
+
+      <div id="tasksList" style="display:flex;flex-direction:column;gap:16px;"></div>
+    </div>
+  </main>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Task Modal -->
+<div class="modal-overlay" id="taskModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">📌 NEW TASK</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="form-group"><label class="form-label">Task Title *</label><input type="text" class="form-control" id="taskTitle" placeholder="e.g. GD #1, Lecturette #2"/></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="taskDesc" rows="3" placeholder="What is this task about?"></textarea></div>
+    <div class="form-group"><label class="form-label">Google Meet Link</label><input type="url" class="form-control" id="taskMeet" placeholder="https://meet.google.com/..."/></div>
+    <div class="form-group"><label class="form-label">Study Material Drive Link</label><input type="url" class="form-control" id="taskDrive" placeholder="https://drive.google.com/..."/></div>
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-control" id="taskActive"><option value="true">Active (visible to members)</option><option value="false">Inactive</option></select>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn" onclick="closeModal()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">Cancel</button>
+      <button class="btn btn-gold" onclick="saveTask()">💾 Save Task</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { db, collection, doc, getDocs, addDoc, updateDoc, deleteDoc } from '../../js/firebase-config.js';
+  import { requireAuth, initLayout, showToast } from '../../js/app.js';
+
+  const session = requireAuth('admin');
+  if (!session) throw new Error();
+  initLayout(session, 'manage-tasks', 'MANAGE TASKS');
+
+  let tasks = [], editingId = null;
+
+  async function loadTasks() {
+    const snap = await getDocs(collection(db, 'tasks'));
+    tasks = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt||0)-new Date(a.createdAt||0));
+    const list = document.getElementById('tasksList');
+    if (tasks.length === 0) { list.innerHTML = '<div class="alert alert-info">No tasks yet. Create your first task!</div>'; return; }
+    list.innerHTML = tasks.map(t => `
+      <div class="card fade-in">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+              <span style="font-family:'Orbitron',monospace;font-size:0.9rem;">${t.title}</span>
+              ${t.isActive ? '<span class="badge badge-green">Active</span>' : '<span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text-muted);border:1px solid var(--border-glow);">Inactive</span>'}
+            </div>
+            ${t.description ? `<div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">${t.description}</div>` : ''}
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              ${t.meetLink ? `<a href="${t.meetLink}" target="_blank" class="btn btn-primary btn-sm">🎥 Meet Link</a>` : ''}
+              ${t.driveLink ? `<a href="${t.driveLink}" target="_blank" class="btn btn-success btn-sm">📁 Drive Link</a>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="editTask('${t.id}')">✏️ Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">🗑️</button>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  window.openModal = function() {
+    editingId = null;
+    document.getElementById('modalTitle').textContent = '📌 NEW TASK';
+    ['taskTitle','taskDesc','taskMeet','taskDrive'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('taskActive').value = 'true';
+    document.getElementById('taskModal').classList.add('active');
+  };
+
+  window.editTask = function(id) {
+    editingId = id;
+    const t = tasks.find(t => t.id === id);
+    document.getElementById('modalTitle').textContent = '✏️ EDIT TASK';
+    document.getElementById('taskTitle').value = t.title || '';
+    document.getElementById('taskDesc').value = t.description || '';
+    document.getElementById('taskMeet').value = t.meetLink || '';
+    document.getElementById('taskDrive').value = t.driveLink || '';
+    document.getElementById('taskActive').value = String(t.isActive !== false);
+    document.getElementById('taskModal').classList.add('active');
+  };
+
+  window.saveTask = async function() {
+    const title = document.getElementById('taskTitle').value.trim();
+    if (!title) { showToast('Task title is required', 'error'); return; }
+    const data = {
+      title,
+      description: document.getElementById('taskDesc').value.trim(),
+      meetLink: document.getElementById('taskMeet').value.trim(),
+      driveLink: document.getElementById('taskDrive').value.trim(),
+      isActive: document.getElementById('taskActive').value === 'true',
+    };
+    try {
+      if (editingId) { await updateDoc(doc(db, 'tasks', editingId), data); showToast('Task updated!', 'success'); }
+      else { await addDoc(collection(db, 'tasks'), { ...data, createdAt: new Date().toISOString() }); showToast('Task created!', 'success'); }
+      closeModal(); loadTasks();
+    } catch(e) { showToast('Error saving task', 'error'); }
+  };
+
+  window.deleteTask = async function(id) {
+    if (!confirm('Delete this task? This cannot be undone.')) return;
+    await deleteDoc(doc(db, 'tasks', id));
+    showToast('Task deleted', 'success');
+    loadTasks();
+  };
+
+  window.closeModal = function() { document.getElementById('taskModal').classList.remove('active'); editingId = null; };
+
+  loadTasks();
+</script>
+</body>
+</html>

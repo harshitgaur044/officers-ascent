@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manage Members — Admin</title>
+  <link rel="stylesheet" href="../../css/style.css"/>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title" style="color:var(--accent-gold);">MANAGE MEMBERS</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left"><h1>MANAGE MEMBERS</h1><p>Add, edit, set PINs and profile pictures</p></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="color:var(--accent-gold);">👥 ALL MEMBER SLOTS (15 TOTAL)</div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>#</th><th>Name</th><th>PIN</th><th>Status</th><th>Profile Pic URL</th><th>Actions</th></tr></thead>
+            <tbody id="membersTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <span class="modal-title">✏️ EDIT MEMBER</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Full Name</label>
+      <input type="text" class="form-control" id="editName" placeholder="Enter member name"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">4-Digit PIN</label>
+      <input type="text" class="form-control" id="editPin" maxlength="4" placeholder="e.g. 1001"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Profile Picture URL (optional)</label>
+      <input type="text" class="form-control" id="editPic" placeholder="https://..."/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-control" id="editActive">
+        <option value="true">Active</option>
+        <option value="false">Inactive (blank slot)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn" onclick="closeModal()" style="border:1px solid var(--border-glow);color:var(--text-secondary);">Cancel</button>
+      <button class="btn btn-gold" onclick="saveMember()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { db, collection, doc, getDoc, getDocs, updateDoc, setDoc } from '../../js/firebase-config.js';
+  import { requireAuth, initLayout, showToast } from '../../js/app.js';
+
+  const session = requireAuth('admin');
+  if (!session) throw new Error();
+  initLayout(session, 'manage-members', 'MANAGE MEMBERS');
+
+  let members = [];
+  let editingId = null;
+
+  async function loadMembers() {
+    const snap = await getDocs(collection(db, 'members'));
+    members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    members.sort((a,b) => a.id.localeCompare(b.id));
+
+    const tbody = document.getElementById('membersTable');
+    tbody.innerHTML = members.map((m, i) => `
+      <tr>
+        <td style="color:var(--text-muted);font-family:'Share Tech Mono',monospace;">${i+1}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;border-radius:50%;overflow:hidden;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;font-size:1rem;border:1px solid var(--border-glow);">
+              ${m.profilePic ? `<img src="${m.profilePic}" style="width:100%;height:100%;object-fit:cover;"/>` : '🪖'}
+            </div>
+            <span style="font-weight:600;">${m.name || '<em style="color:var(--text-muted);">Empty slot</em>'}</span>
+          </div>
+        </td>
+        <td><span style="font-family:'Share Tech Mono',monospace;color:var(--accent-cyan);">${m.pin}</span></td>
+        <td>${m.active && m.name ? '<span class="badge badge-green">Active</span>' : '<span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text-muted);border:1px solid var(--border-glow);">Inactive</span>'}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;font-size:0.8rem;color:var(--text-muted);">${m.profilePic || '—'}</td>
+        <td><button class="btn btn-primary btn-sm" onclick="editMember('${m.id}')">✏️ Edit</button></td>
+      </tr>`).join('');
+  }
+
+  window.editMember = function(id) {
+    editingId = id;
+    const m = members.find(m => m.id === id);
+    document.getElementById('editName').value = m.name || '';
+    document.getElementById('editPin').value = m.pin || '';
+    document.getElementById('editPic').value = m.profilePic || '';
+    document.getElementById('editActive').value = String(m.active !== false);
+    document.getElementById('editModal').classList.add('active');
+  };
+
+  window.saveMember = async function() {
+    const name = document.getElementById('editName').value.trim();
+    const pin = document.getElementById('editPin').value.trim();
+    const pic = document.getElementById('editPic').value.trim();
+    const active = document.getElementById('editActive').value === 'true';
+
+    if (pin && (pin.length !== 4 || isNaN(pin))) { showToast('PIN must be exactly 4 digits', 'error'); return; }
+
+    // Check PIN uniqueness
+    if (pin) {
+      const conflict = members.find(m => m.id !== editingId && m.pin === pin);
+      if (conflict) { showToast(`PIN ${pin} is already used by ${conflict.name}`, 'error'); return; }
+    }
+
+    await updateDoc(doc(db, 'members', editingId), { name, pin, profilePic: pic, active });
+    showToast('Member updated!', 'success');
+    closeModal();
+    loadMembers();
+  };
+
+  window.closeModal = function() {
+    document.getElementById('editModal').classList.remove('active');
+    editingId = null;
+  };
+
+  loadMembers();
+</script>
+</body>
+</html>

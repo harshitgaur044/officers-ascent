@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Attendance — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">ATTENDANCE</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left">
+          <h1>ATTENDANCE SYSTEM</h1>
+          <p>Mark your presence · View all records</p>
+        </div>
+      </div>
+
+      <!-- Mark Attendance -->
+      <div class="card mb-24" id="markSection">
+        <div class="card-title green">📋 MARK YOUR ATTENDANCE</div>
+        <div id="markStatus"></div>
+        <div id="markBtn">
+          <p style="color:var(--text-secondary);margin-bottom:16px;font-size:0.9rem;">Today: <span id="todayDate" style="color:var(--accent-cyan);font-family:'Share Tech Mono',monospace;"></span></p>
+          <button class="btn btn-success btn-lg" onclick="markAttendance()">✅ MARK PRESENT TODAY</button>
+        </div>
+      </div>
+
+      <!-- My Stats -->
+      <div class="stats-grid mb-24" id="myStats"></div>
+
+      <!-- Attendance Chart -->
+      <div class="card mb-24">
+        <div class="card-title">📊 MONTHLY ATTENDANCE</div>
+        <div class="chart-wrapper"><canvas id="attChart"></canvas></div>
+      </div>
+
+      <!-- All Members Attendance -->
+      <div class="card">
+        <div class="card-title">👥 ALL MEMBERS ATTENDANCE</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>Total Present</th>
+                <th>Attendance %</th>
+                <th>Last Seen</th>
+                <th>Streak</th>
+              </tr>
+            </thead>
+            <tbody id="attTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, doc, getDoc, getDocs, addDoc, query, where, orderBy } from '../js/firebase-config.js';
+  import { requireAuth, initLayout, getActiveMembers, showToast } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error();
+  initLayout(session, 'attendance', 'ATTENDANCE');
+
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('todayDate').textContent = new Date().toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  async function checkTodayAttendance() {
+    if (session.role === 'admin') {
+      document.getElementById('markSection').classList.add('hidden');
+      return;
+    }
+    const q = query(collection(db, 'attendance'), where('memberId','==',session.id), where('date','==',today));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      document.getElementById('markBtn').innerHTML = `<div class="alert alert-success">✅ You have already marked attendance for today!</div>`;
+    }
+  }
+
+  window.markAttendance = async function() {
+    try {
+      const q = query(collection(db, 'attendance'), where('memberId','==',session.id), where('date','==',today));
+      const existing = await getDocs(q);
+      if (!existing.empty) { showToast('Already marked today!', 'info'); return; }
+
+      await addDoc(collection(db, 'attendance'), {
+        memberId: session.id,
+        memberName: session.name,
+        date: today,
+        timestamp: new Date().toISOString()
+      });
+      showToast('Attendance marked! ✅', 'success');
+      document.getElementById('markBtn').innerHTML = `<div class="alert alert-success">✅ Attendance marked for today!</div>`;
+      loadMyStats();
+      loadAllAttendance();
+    } catch(e) {
+      showToast('Error marking attendance. Try again.', 'error');
+    }
+  };
+
+  async function loadMyStats() {
+    if (session.role === 'admin') return;
+    const allSnap = await getDocs(collection(db, 'attendance'));
+    const allDates = [...new Set(allSnap.docs.map(d => d.data().date))];
+    const mySnap = await getDocs(query(collection(db, 'attendance'), where('memberId','==',session.id), orderBy('date','desc')));
+    const myDates = mySnap.docs.map(d => d.data().date).sort().reverse();
+    const percent = allDates.length > 0 ? Math.round((myDates.length / allDates.length) * 100) : 0;
+
+    let streak = 0;
+    const now = new Date();
+    for (let i = 0; i < myDates.length; i++) {
+      const diff = Math.floor((now - new Date(myDates[i])) / 86400000);
+      if (diff <= i + 1) streak++;
+      else break;
+    }
+
+    document.getElementById('myStats').innerHTML = `
+      <div class="stat-card"><div class="stat-value">${myDates.length}</div><div class="stat-label">Total Present</div></div>
+      <div class="stat-card"><div class="stat-value green">${percent}%</div><div class="stat-label">Attendance %</div></div>
+      <div class="stat-card"><div class="stat-value gold">${streak}</div><div class="stat-label">Current Streak</div></div>
+      <div class="stat-card"><div class="stat-value">${allDates.length}</div><div class="stat-label">Total Sessions</div></div>
+    `;
+
+    // Monthly chart
+    const months = {};
+    myDates.forEach(d => {
+      const m = d.substring(0,7);
+      months[m] = (months[m]||0) + 1;
+    });
+    const labels = Object.keys(months).sort().slice(-6);
+    const values = labels.map(l => months[l]);
+    new Chart(document.getElementById('attChart'), {
+      type: 'bar',
+      data: {
+        labels: labels.map(l => { const [y,m] = l.split('-'); return new Date(y,m-1).toLocaleString('default',{month:'short',year:'2-digit'}); }),
+        datasets: [{ label: 'Days Present', data: values, backgroundColor: 'rgba(0,255,136,0.3)', borderColor: '#00ff88', borderWidth: 1, borderRadius: 4 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8899aa' } } },
+        scales: { x: { ticks: { color: '#8899aa' }, grid: { color: 'rgba(255,255,255,0.05)' } }, y: { ticks: { color: '#8899aa' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true } }
+      }
+    });
+  }
+
+  async function loadAllAttendance() {
+    const members = await getActiveMembers();
+    const allSnap = await getDocs(collection(db, 'attendance'));
+    const allDates = [...new Set(allSnap.docs.map(d => d.data().date))];
+    const totalSessions = allDates.length;
+
+    const tbody = document.getElementById('attTable');
+    tbody.innerHTML = '';
+
+    for (const m of members) {
+      const mRecs = allSnap.docs.filter(d => d.data().memberId === m.id);
+      const mDates = mRecs.map(d => d.data().date).sort().reverse();
+      const percent = totalSessions > 0 ? Math.round((mDates.length / totalSessions)*100) : 0;
+      const lastDate = mDates[0] ? new Date(mDates[0]).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}) : '—';
+
+      let streak = 0;
+      const now = new Date();
+      for (let i = 0; i < mDates.length; i++) {
+        const diff = Math.floor((now - new Date(mDates[i])) / 86400000);
+        if (diff <= i + 1) streak++;
+        else break;
+      }
+
+      const color = percent >= 80 ? 'var(--accent-green)' : percent >= 60 ? 'var(--accent-gold)' : 'var(--accent-red)';
+      tbody.innerHTML += `
+        <tr>
+          <td><span style="font-weight:600;">${m.name}</span></td>
+          <td>${mDates.length} / ${totalSessions}</td>
+          <td><span style="color:${color};font-family:'Orbitron',monospace;font-size:0.85rem;">${percent}%</span></td>
+          <td style="color:var(--text-secondary);">${lastDate}</td>
+          <td><span class="badge badge-cyan">${streak} days</span></td>
+        </tr>`;
+    }
+  }
+
+  checkTodayAttendance();
+  loadMyStats();
+  loadAllAttendance();
+</script>
+</body>
+</html>

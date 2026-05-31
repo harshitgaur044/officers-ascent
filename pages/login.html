@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <link rel="stylesheet" href="../css/login.css"/>
+</head>
+<body class="login-body">
+
+  <!-- Animated background particles -->
+  <canvas id="particleCanvas"></canvas>
+
+  <!-- Radar sweep -->
+  <div class="radar-container">
+    <div class="radar-circle"></div>
+    <div class="radar-circle"></div>
+    <div class="radar-circle"></div>
+    <div class="radar-sweep"></div>
+    <div class="radar-dot" style="top:30%;left:60%"></div>
+    <div class="radar-dot" style="top:55%;left:25%"></div>
+    <div class="radar-dot" style="top:70%;left:75%"></div>
+  </div>
+
+  <!-- Animated jets -->
+  <div class="jet jet-1">✈</div>
+  <div class="jet jet-2">✈</div>
+
+  <!-- Corner HUD decorations -->
+  <div class="hud-corner hud-tl"></div>
+  <div class="hud-corner hud-tr"></div>
+  <div class="hud-corner hud-bl"></div>
+  <div class="hud-corner hud-br"></div>
+
+  <div class="login-container">
+    <!-- Logo / Header -->
+    <div class="login-header">
+      <div class="login-emblem">⚔️</div>
+      <h1 class="login-title">THE OFFICER'S ASCENT</h1>
+      <p class="login-subtitle">TURNING POTENTIAL INTO LEADERSHIP</p>
+      <div class="login-divider"></div>
+    </div>
+
+    <!-- Login type selector -->
+    <div class="login-type-selector">
+      <button class="login-type-btn active" id="btnMember" onclick="switchTab('member')">
+        <span>👤</span> CANDIDATE
+      </button>
+      <button class="login-type-btn" id="btnAdmin" onclick="switchTab('admin')">
+        <span>⚡</span> ADMIN
+      </button>
+    </div>
+
+    <!-- Member Login -->
+    <div id="memberLogin" class="login-form-section">
+      <div id="memberAlert"></div>
+      <div class="form-group">
+        <label class="form-label">SELECT YOUR NAME</label>
+        <select class="form-control" id="memberName">
+          <option value="">-- Select Name --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ENTER YOUR PIN</label>
+        <input type="password" class="form-control" id="memberPin" maxlength="4" placeholder="••••" inputmode="numeric"/>
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="memberLogin()">
+        <span>🔐</span> ACCESS SYSTEM
+      </button>
+    </div>
+
+    <!-- Admin Login -->
+    <div id="adminLogin" class="login-form-section hidden">
+      <div id="adminAlert"></div>
+      <div class="form-group">
+        <label class="form-label">ADMIN USERNAME</label>
+        <input type="text" class="form-control" id="adminUser" placeholder="Enter username"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ADMIN PASSWORD</label>
+        <input type="password" class="form-control" id="adminPass" placeholder="••••••••"/>
+      </div>
+      <button class="btn btn-gold btn-full btn-lg" onclick="adminLogin()">
+        <span>⚡</span> COMMAND ACCESS
+      </button>
+    </div>
+
+    <p class="login-footer-text">SECURE MILITARY PLATFORM — AUTHORIZED PERSONNEL ONLY</p>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script type="module">
+    import { db, collection, doc, getDoc, getDocs, query, where } from '../js/firebase-config.js';
+    import { seedDatabase } from '../js/seed.js';
+
+    // Seed DB on first load
+    seedDatabase();
+
+    // Load members into dropdown
+    async function loadMembers() {
+      const snap = await getDocs(collection(db, 'members'));
+      const sel = document.getElementById('memberName');
+      snap.forEach(d => {
+        const m = d.data();
+        if (m.active && m.name) {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = m.name;
+          sel.appendChild(opt);
+        }
+      });
+    }
+    loadMembers();
+
+    // Check if already logged in
+    const session = JSON.parse(sessionStorage.getItem('oa_session') || 'null');
+    if (session) {
+      window.location.href = session.role === 'admin' ? '../pages/admin/admin-dashboard.html' : '../pages/dashboard.html';
+    }
+
+    window.switchTab = function(tab) {
+      document.getElementById('memberLogin').classList.toggle('hidden', tab !== 'member');
+      document.getElementById('adminLogin').classList.toggle('hidden', tab !== 'admin');
+      document.getElementById('btnMember').classList.toggle('active', tab === 'member');
+      document.getElementById('btnAdmin').classList.toggle('active', tab === 'admin');
+    };
+
+    window.memberLogin = async function() {
+      const nameId = document.getElementById('memberName').value;
+      const pin = document.getElementById('memberPin').value;
+      const alertEl = document.getElementById('memberAlert');
+
+      if (!nameId) { showAlert(alertEl, 'error', 'Please select your name'); return; }
+      if (!pin) { showAlert(alertEl, 'error', 'Please enter your PIN'); return; }
+
+      try {
+        const memberDoc = await getDoc(doc(db, 'members', nameId));
+        if (!memberDoc.exists()) { showAlert(alertEl, 'error', 'Member not found'); return; }
+        const member = memberDoc.data();
+        if (member.pin !== pin) { showAlert(alertEl, 'error', '❌ Invalid PIN — Access Denied'); return; }
+
+        const session = { role: 'member', id: nameId, name: member.name, profilePic: member.profilePic || '' };
+        sessionStorage.setItem('oa_session', JSON.stringify(session));
+        window.location.href = '../pages/dashboard.html';
+      } catch(e) {
+        showAlert(alertEl, 'error', 'Connection error. Try again.');
+      }
+    };
+
+    window.adminLogin = async function() {
+      const user = document.getElementById('adminUser').value.trim();
+      const pass = document.getElementById('adminPass').value;
+      const alertEl = document.getElementById('adminAlert');
+
+      if (!user || !pass) { showAlert(alertEl, 'error', 'Enter username and password'); return; }
+
+      try {
+        const adminDoc = await getDoc(doc(db, 'admin', 'credentials'));
+        if (!adminDoc.exists()) { showAlert(alertEl, 'error', 'Admin not configured'); return; }
+        const admin = adminDoc.data();
+        if (admin.username !== user || admin.password !== pass) {
+          showAlert(alertEl, 'error', '❌ Invalid credentials — Access Denied'); return;
+        }
+        const session = { role: 'admin', name: admin.username };
+        sessionStorage.setItem('oa_session', JSON.stringify(session));
+        window.location.href = '../pages/admin/admin-dashboard.html';
+      } catch(e) {
+        showAlert(alertEl, 'error', 'Connection error. Try again.');
+      }
+    };
+
+    // Enter key support
+    document.getElementById('memberPin').addEventListener('keydown', e => { if(e.key==='Enter') window.memberLogin(); });
+    document.getElementById('adminPass').addEventListener('keydown', e => { if(e.key==='Enter') window.adminLogin(); });
+
+    function showAlert(el, type, msg) {
+      el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${msg}</div>`;
+      setTimeout(() => el.innerHTML = '', 4000);
+    }
+  </script>
+
+  <script>
+    // Particle canvas animation
+    const canvas = document.getElementById('particleCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+
+    const particles = Array.from({length: 80}, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: (Math.random() - 0.5) * 0.4,
+      r: Math.random() * 2 + 0.5,
+      alpha: Math.random() * 0.6 + 0.2,
+      color: Math.random() > 0.5 ? '#00b4ff' : '#00ff88'
+    }));
+
+    function animateParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color + Math.floor(p.alpha * 255).toString(16).padStart(2,'0');
+        ctx.fill();
+      });
+      // Draw connections
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i+1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < 100) {
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(0,180,255,${0.1 * (1 - dist/100)})`;
+            ctx.lineWidth = 0.5;
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+      requestAnimationFrame(animateParticles);
+    }
+    animateParticles();
+  </script>
+</body>
+</html>

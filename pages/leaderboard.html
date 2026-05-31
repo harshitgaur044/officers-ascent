@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Leaderboard — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .lb-row { display:flex; align-items:center; gap:16px; padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.2s; }
+    .lb-row:hover { background:rgba(0,180,255,0.04); }
+    .lb-avatar { width:44px;height:44px;border-radius:50%;overflow:hidden;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0; }
+    .lb-avatar img { width:100%;height:100%;object-fit:cover; }
+    .lb-name { flex:1;font-size:0.95rem;font-weight:600; }
+    .lb-score { font-family:'Orbitron',monospace;font-size:1rem;color:var(--accent-green);font-weight:700; }
+    .special-rank-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px; }
+    .special-rank-card { background:var(--bg-card);border:1px solid var(--border-glow);border-radius:10px;padding:16px;text-align:center;transition:all 0.3s; }
+    .special-rank-card:hover { border-color:var(--accent-cyan);box-shadow:var(--shadow-cyan); }
+    .special-rank-icon { font-size:1.8rem;margin-bottom:8px; }
+    .special-rank-category { font-size:0.65rem;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;font-family:'Orbitron',monospace;margin-bottom:6px; }
+    .special-rank-name { font-size:0.9rem;color:var(--accent-cyan);font-weight:600;margin-bottom:4px; }
+    .special-rank-score { font-size:0.8rem;color:var(--text-muted); }
+  </style>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">LEADERBOARD</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left"><h1>LEADERBOARD</h1><p>Rankings across all performance metrics</p></div>
+      </div>
+
+      <!-- SPECIAL CATEGORY RANKINGS -->
+      <div class="card mb-24">
+        <div class="card-title">🎖️ CATEGORY CHAMPIONS</div>
+        <div class="special-rank-grid" id="specialRanks"></div>
+      </div>
+
+      <!-- MAIN LEADERBOARD TABS -->
+      <div class="card">
+        <div class="tabs" style="margin-bottom:16px;">
+          <button class="tab-btn active" onclick="showLB('overall')">🏆 Overall</button>
+          <button class="tab-btn" onclick="showLB('attendance')">📋 Attendance</button>
+          <button class="tab-btn" onclick="showLB('quiz')">🧠 Quiz</button>
+        </div>
+        <div id="lbContent"></div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, getDocs, query, where, orderBy } from '../js/firebase-config.js';
+  import { requireAuth, initLayout, getActiveMembers, getMemberEvalAvg, getAttendancePercent, getEvalTraits } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error();
+  initLayout(session, 'leaderboard', 'LEADERBOARD');
+
+  let members = [], evalData = {}, attData = {}, quizData = {}, traits = [];
+
+  async function loadAll() {
+    members = await getActiveMembers();
+    traits = await getEvalTraits();
+
+    const allEvals = await getDocs(collection(db, 'evaluations'));
+    const allAtt = await getDocs(collection(db, 'attendance'));
+    const allQuiz = await getDocs(collection(db, 'quiz_results'));
+    const allDates = [...new Set(allAtt.docs.map(d => d.data().date))];
+    const totalSessions = allDates.length;
+
+    for (const m of members) {
+      // Eval data
+      const mEvals = allEvals.docs.filter(d => d.data().evaluatedId === m.id);
+      if (mEvals.length > 0) {
+        const traitSums = {};
+        traits.forEach(t => traitSums[t] = 0);
+        mEvals.forEach(d => traits.forEach(t => traitSums[t] += (d.data().scores?.[t]||0)));
+        const traitAvgs = {};
+        let total = 0;
+        traits.forEach(t => { traitAvgs[t] = traitSums[t]/mEvals.length; total += traitAvgs[t]; });
+        evalData[m.id] = { total: total/traits.length, traits: traitAvgs, count: mEvals.length };
+      } else {
+        evalData[m.id] = { total: 0, traits: {}, count: 0 };
+      }
+
+      // Attendance
+      const mAtt = allAtt.docs.filter(d => d.data().memberId === m.id).length;
+      attData[m.id] = totalSessions > 0 ? Math.round((mAtt/totalSessions)*100) : 0;
+
+      // Quiz
+      const mQuiz = allQuiz.docs.filter(d => d.data().memberId === m.id);
+      quizData[m.id] = mQuiz.length > 0 ? mQuiz.reduce((s,d) => s+d.data().score, 0)/mQuiz.length : 0;
+    }
+
+    renderSpecialRanks();
+    showLB('overall');
+  }
+
+  function renderSpecialRanks() {
+    const categories = [
+      ...traits.map(t => ({ icon: getTraitIcon(t), label: t, key: t, getValue: m => evalData[m.id]?.traits?.[t] || 0, format: v => v.toFixed(1)+'/10' })),
+      { icon: '📋', label: 'Attendance', key: 'att', getValue: m => attData[m.id]||0, format: v => v+'%' },
+      { icon: '🧠', label: 'Quiz Champion', key: 'quiz', getValue: m => quizData[m.id]||0, format: v => v.toFixed(0)+'%' },
+    ];
+
+    document.getElementById('specialRanks').innerHTML = categories.map(cat => {
+      const ranked = [...members].sort((a,b) => cat.getValue(b)-cat.getValue(a));
+      const top = ranked[0];
+      const score = top ? cat.getValue(top) : 0;
+      return `
+        <div class="special-rank-card">
+          <div class="special-rank-icon">${cat.icon}</div>
+          <div class="special-rank-category">${cat.label}</div>
+          <div class="special-rank-name">${top && score > 0 ? top.name.split(' ')[0] : '—'}</div>
+          <div class="special-rank-score">${score > 0 ? cat.format(score) : 'No data'}</div>
+        </div>`;
+    }).join('');
+  }
+
+  window.showLB = function(type) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    event?.target?.classList.add('active');
+
+    let ranked = [...members];
+    if (type === 'overall') ranked.sort((a,b) => (evalData[b.id]?.total||0)-(evalData[a.id]?.total||0));
+    else if (type === 'attendance') ranked.sort((a,b) => (attData[b.id]||0)-(attData[a.id]||0));
+    else if (type === 'quiz') ranked.sort((a,b) => (quizData[b.id]||0)-(quizData[a.id]||0));
+
+    const medals = ['🥇','🥈','🥉'];
+    document.getElementById('lbContent').innerHTML = ranked.map((m, i) => {
+      let score, scoreStr;
+      if (type==='overall') { score=evalData[m.id]?.total||0; scoreStr=score>0?score.toFixed(2)+'/10':'No data'; }
+      else if (type==='attendance') { score=attData[m.id]||0; scoreStr=score+'%'; }
+      else { score=quizData[m.id]||0; scoreStr=score>0?score.toFixed(0)+'%':'No attempts'; }
+
+      const isMe = m.id === session.id;
+      return `
+        <div class="lb-row" style="${isMe?'background:rgba(0,255,136,0.04);border-left:3px solid var(--accent-green);':''}">
+          <div style="width:32px;text-align:center;">
+            ${i < 3 ? `<span style="font-size:1.2rem;">${medals[i]}</span>` : `<span class="rank-badge rank-other">${i+1}</span>`}
+          </div>
+          <div class="lb-avatar">
+            ${m.profilePic ? `<img src="${m.profilePic}"/>` : '🪖'}
+          </div>
+          <div class="lb-name">${m.name} ${isMe?'<span class="badge badge-green" style="margin-left:6px;font-size:0.65rem;">YOU</span>':''}</div>
+          <div class="lb-score" style="color:${i===0?'var(--accent-gold)':i===1?'var(--text-secondary)':i===2?'#cd7f32':'var(--accent-green)'}">${scoreStr}</div>
+        </div>`;
+    }).join('');
+  };
+
+  function getTraitIcon(trait) {
+    const icons = { Communication:'🗣️', Leadership:'🦅', Confidence:'💪', Knowledge:'📖', Cooperation:'🤝', Initiative:'⚡' };
+    return icons[trait] || '🎯';
+  }
+
+  loadAll();
+</script>
+</body>
+</html>

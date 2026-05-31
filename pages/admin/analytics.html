@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analytics — Admin</title>
+  <link rel="stylesheet" href="../../css/style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title" style="color:var(--accent-gold);">ANALYTICS</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left"><h1>PLATFORM ANALYTICS</h1><p>Full performance overview</p></div>
+      </div>
+
+      <div class="stats-grid mb-24" id="statsGrid"></div>
+
+      <div class="grid-2 mb-24">
+        <div class="card">
+          <div class="card-title">📊 AVERAGE SCORES PER MEMBER</div>
+          <div class="chart-wrapper-lg"><canvas id="memberAvgChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title green">📋 ATTENDANCE OVERVIEW</div>
+          <div class="chart-wrapper-lg"><canvas id="attChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card mb-24">
+        <div class="card-title">🧠 QUIZ SCORES PER MEMBER</div>
+        <div class="chart-wrapper"><canvas id="quizChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="color:var(--accent-gold);">⚔️ EVALUATION PARTICIPATION</div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Member</th><th>Evaluations Given</th><th>Evaluations Received</th><th>Quiz Attempts</th><th>Attendance %</th></tr></thead>
+            <tbody id="participationTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, getDocs, query, where } from '../../js/firebase-config.js';
+  import { requireAuth, initLayout, getActiveMembers, getMemberEvalAvg, getAttendancePercent, getEvalTraits } from '../../js/app.js';
+
+  const session = requireAuth('admin');
+  if (!session) throw new Error();
+  initLayout(session, 'analytics', 'ANALYTICS');
+
+  async function load() {
+    const members = await getActiveMembers();
+    const allEvals = await getDocs(collection(db, 'evaluations'));
+    const allAtt = await getDocs(collection(db, 'attendance'));
+    const allQuiz = await getDocs(collection(db, 'quiz_results'));
+    const allDates = [...new Set(allAtt.docs.map(d => d.data().date))];
+
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-card"><div class="stat-value">${members.length}</div><div class="stat-label">Active Members</div></div>
+      <div class="stat-card"><div class="stat-value gold">${allEvals.size}</div><div class="stat-label">Total Evaluations</div></div>
+      <div class="stat-card"><div class="stat-value green">${allQuiz.size}</div><div class="stat-label">Quiz Attempts</div></div>
+      <div class="stat-card"><div class="stat-value">${allDates.length}</div><div class="stat-label">Total Sessions</div></div>
+    `;
+
+    // Per-member data
+    const names = [], avgScores = [], attPcts = [], quizAvgs = [];
+    const tbody = document.getElementById('participationTable');
+    tbody.innerHTML = '';
+
+    for (const m of members) {
+      const evalData = await getMemberEvalAvg(m.id);
+      const att = await getAttendancePercent(m.id);
+      const mQuiz = allQuiz.docs.filter(d => d.data().memberId === m.id);
+      const quizAvg = mQuiz.length > 0 ? mQuiz.reduce((s,d)=>s+d.data().score,0)/mQuiz.length : 0;
+      const evalsGiven = allEvals.docs.filter(d => d.data().evaluatorId === m.id).length;
+      const evalsReceived = allEvals.docs.filter(d => d.data().evaluatedId === m.id).length;
+
+      names.push(m.name.split(' ')[0]);
+      avgScores.push(evalData.total > 0 ? parseFloat(evalData.total.toFixed(2)) : 0);
+      attPcts.push(att);
+      quizAvgs.push(parseFloat(quizAvg.toFixed(1)));
+
+      tbody.innerHTML += `
+        <tr>
+          <td style="font-weight:600;">${m.name}</td>
+          <td><span style="color:var(--accent-cyan);font-family:'Orbitron',monospace;">${evalsGiven}</span></td>
+          <td><span style="color:var(--accent-green);font-family:'Orbitron',monospace;">${evalsReceived}</span></td>
+          <td>${mQuiz.length}</td>
+          <td><span style="color:${att>=80?'var(--accent-green)':att>=60?'var(--accent-gold)':'var(--accent-red)'};">${att}%</span></td>
+        </tr>`;
+    }
+
+    const chartDefaults = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8899aa' } } },
+      scales: {
+        x: { ticks: { color: '#8899aa' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#8899aa' }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: true }
+      }
+    };
+
+    new Chart(document.getElementById('memberAvgChart'), {
+      type: 'bar',
+      data: { labels: names, datasets: [{ label: 'Avg Score (/10)', data: avgScores, backgroundColor: 'rgba(0,180,255,0.3)', borderColor: '#00b4ff', borderWidth: 1, borderRadius: 4 }] },
+      options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: 10 } } }
+    });
+
+    new Chart(document.getElementById('attChart'), {
+      type: 'bar',
+      data: { labels: names, datasets: [{ label: 'Attendance %', data: attPcts, backgroundColor: 'rgba(0,255,136,0.3)', borderColor: '#00ff88', borderWidth: 1, borderRadius: 4 }] },
+      options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: 100 } } }
+    });
+
+    new Chart(document.getElementById('quizChart'), {
+      type: 'bar',
+      data: { labels: names, datasets: [{ label: 'Quiz Avg %', data: quizAvgs, backgroundColor: 'rgba(255,215,0,0.3)', borderColor: '#ffd700', borderWidth: 1, borderRadius: 4 }] },
+      options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: 100 } } }
+    });
+  }
+
+  load();
+</script>
+</body>
+</html>
