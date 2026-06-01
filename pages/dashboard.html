@@ -649,21 +649,26 @@
 
   // ── SCHEDULE WIDGET ──
   async function loadScheduleWidget() {
-    function getNowIST() {
-      const now = new Date();
-      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-      return new Date(utc + 5.5 * 3600000);
+   function getTodayIST() {
+      return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     }
-    function getMonday(d) {
-      const date = new Date(d); const day = date.getDay();
+    function getMonday(dateStr) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+      const day = date.getDay();
       const diff = day === 0 ? -6 : 1 - day;
-      date.setDate(date.getDate() + diff); date.setHours(0,0,0,0); return date;
+      date.setDate(date.getDate() + diff);
+      return date;
     }
-    function fmt(d) { return d.toISOString().split('T')[0]; }
+    function fmt(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
 
-    const nowIST = getNowIST();
-    const todayStr = fmt(nowIST);
-    const monday = getMonday(nowIST);
+    const todayStr = getTodayIST();
+    const monday = getMonday(todayStr);
     const dates = Array.from({length:7}, (_,i) => { const d=new Date(monday); d.setDate(d.getDate()+i); return d; });
     const startStr = fmt(dates[0]), endStr = fmt(dates[6]);
 
