@@ -120,21 +120,28 @@
   initLayout(session, 'schedule', 'WEEKLY SCHEDULE');
 
   // IST offset = UTC+5:30
-  function getNowIST() {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-}
+  function getTodayIST() {
+    // Get today's date string directly in IST — no conversion needed
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    // en-CA gives YYYY-MM-DD format natively
+  }
 
-  function getMonday(d) {
-    const date = new Date(d);
-    const day = date.getDay(); // 0=Sun
+  function getMonday(dateStr) {
+    // Work with date strings only — avoids all timezone shifting
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d); // local date, no timezone
+    const day = date.getDay();
     const diff = day === 0 ? -6 : 1 - day;
     date.setDate(date.getDate() + diff);
-    date.setHours(0,0,0,0);
     return date;
   }
 
   function formatDate(d) {
-    return d.toISOString().split('T')[0]; // YYYY-MM-DD
+    // Format without toISOString to avoid UTC shift
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 
   function formatIndian(d) {
@@ -147,9 +154,8 @@
 
   const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
-  const nowIST = getNowIST();
-  const todayStr = formatDate(nowIST);
-  let currentMonday = getMonday(nowIST);
+ const todayStr = getTodayIST();
+  let currentMonday = getMonday(todayStr);
 
   function getWeekDates(monday) {
     return Array.from({length:7}, (_,i) => {
