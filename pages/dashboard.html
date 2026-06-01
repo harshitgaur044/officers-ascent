@@ -421,6 +421,17 @@
         </div>
       </div>
 
+      <!-- WEEKLY SCHEDULE WIDGET -->
+      <div class="card mb-30">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div class="card-title" style="margin:0;">📅 THIS WEEK'S SCHEDULE</div>
+          <a href="schedule.html" style="font-size:0.8rem;color:var(--accent-cyan);text-decoration:none;font-family:'Rajdhani',sans-serif;font-weight:600;">View Full Schedule →</a>
+        </div>
+        <div id="scheduleWidget">
+          <div style="color:var(--text-muted);font-size:0.85rem;">Loading schedule...</div>
+        </div>
+      </div>
+
     </div>
   </main>
 </div>
@@ -636,6 +647,59 @@
     });
   }
 
+  // ── SCHEDULE WIDGET ──
+  async function loadScheduleWidget() {
+    function getNowIST() {
+      const now = new Date();
+      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+      return new Date(utc + 5.5 * 3600000);
+    }
+    function getMonday(d) {
+      const date = new Date(d); const day = date.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      date.setDate(date.getDate() + diff); date.setHours(0,0,0,0); return date;
+    }
+    function fmt(d) { return d.toISOString().split('T')[0]; }
+
+    const nowIST = getNowIST();
+    const todayStr = fmt(nowIST);
+    const monday = getMonday(nowIST);
+    const dates = Array.from({length:7}, (_,i) => { const d=new Date(monday); d.setDate(d.getDate()+i); return d; });
+    const startStr = fmt(dates[0]), endStr = fmt(dates[6]);
+
+    const { getDocs: gd, collection: col, query: q, where: w } = await import('../js/firebase-config.js');
+    const snap = await gd(q(col(db,'schedule'), w('date','>=',startStr), w('date','<=',endStr)));
+    const tasks = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+    const widget = document.getElementById('scheduleWidget');
+    const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const rows = dates.map((date, i) => {
+      const dateStr = fmt(date);
+      const isToday = dateStr === todayStr;
+      const dayTasks = tasks.filter(t=>t.date===dateStr);
+      const dayDate = date.toLocaleDateString('en-IN',{day:'numeric',month:'short',timeZone:'Asia/Kolkata'});
+      return `
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);${isToday?'background:rgba(0,255,136,0.03);border-radius:6px;padding:8px 10px;':''}">
+          <div style="min-width:80px;flex-shrink:0;">
+            <div style="font-family:'Orbitron',monospace;font-size:0.7rem;color:${isToday?'var(--accent-green)':'var(--accent-cyan)'};letter-spacing:1px;">${dayNames[i]}</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);font-family:'Share Tech Mono',monospace;">${dayDate}</div>
+            ${isToday?'<div style="font-size:0.6rem;color:var(--accent-green);letter-spacing:1px;">TODAY</div>':''}
+          </div>
+          <div style="flex:1;">
+            ${dayTasks.length===0
+              ? `<div style="color:var(--text-muted);font-size:0.8rem;font-style:italic;">No tasks</div>`
+              : dayTasks.map(t=>`
+                  <div style="margin-bottom:4px;">
+                    <span style="font-size:0.85rem;font-weight:600;color:var(--text-primary);">${t.title}</span>
+                    ${t.description?`<span style="font-size:0.78rem;color:var(--text-secondary);margin-left:8px;">— ${t.description}</span>`:''}
+                  </div>`).join('')}
+          </div>
+        </div>`;
+    }).join('');
+
+    widget.innerHTML = rows || '<div style="color:var(--text-muted);font-size:0.85rem;">No tasks scheduled this week.</div>';
+  }
+
   // Start foreground FCM listener (shows in-app banner when tab is open)
   listenForForegroundNotifications().catch(()=>{});
 
@@ -643,6 +707,7 @@
   loadHero();
   loadTasks();
   loadStats();
+  loadScheduleWidget();
   renderNotifBanner();
   listenForAdminUpdates();
 </script>

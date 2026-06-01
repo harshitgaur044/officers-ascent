@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Weekly Schedule — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .week-nav {
+      display:flex; align-items:center; justify-content:space-between;
+      background:var(--bg-card); border:1px solid var(--border-glow);
+      border-radius:10px; padding:14px 20px; margin-bottom:24px;
+    }
+    .week-label {
+      font-family:'Orbitron',monospace; font-size:0.9rem;
+      color:var(--accent-cyan); letter-spacing:2px; text-align:center;
+    }
+    .week-nav-btn {
+      background:rgba(0,180,255,0.1); border:1px solid rgba(0,180,255,0.3);
+      color:var(--accent-cyan); border-radius:6px; padding:8px 16px;
+      cursor:pointer; font-family:'Rajdhani',sans-serif; font-size:0.9rem;
+      font-weight:600; transition:all 0.2s;
+    }
+    .week-nav-btn:hover { background:rgba(0,180,255,0.25); }
+    .week-nav-btn:disabled { opacity:0.3; cursor:default; }
+
+    .day-row {
+      background:var(--bg-card); border:1px solid var(--border-glow);
+      border-radius:10px; margin-bottom:12px; overflow:hidden;
+      transition:border-color 0.2s;
+    }
+    .day-row.today { border-color:var(--accent-green); }
+    .day-row.today .day-label { background:rgba(0,255,136,0.1); }
+
+    .day-label {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 20px; background:rgba(0,180,255,0.05);
+      border-bottom:1px solid var(--border-glow);
+    }
+    .day-name {
+      font-family:'Orbitron',monospace; font-size:0.85rem;
+      color:var(--text-primary); letter-spacing:1px;
+    }
+    .day-name.today-text { color:var(--accent-green); }
+    .day-date {
+      font-family:'Share Tech Mono',monospace; font-size:0.8rem;
+      color:var(--text-muted);
+    }
+    .today-badge {
+      background:rgba(0,255,136,0.15); border:1px solid rgba(0,255,136,0.4);
+      color:var(--accent-green); border-radius:20px; padding:2px 10px;
+      font-size:0.68rem; font-family:'Orbitron',monospace; letter-spacing:1px;
+    }
+
+    .day-tasks { padding:12px 20px; }
+    .no-task {
+      color:var(--text-muted); font-size:0.85rem; font-style:italic;
+      padding:4px 0;
+    }
+    .task-item {
+      display:flex; align-items:flex-start; gap:12px;
+      padding:10px 14px; background:var(--bg-secondary);
+      border:1px solid var(--border-glow); border-radius:8px;
+      margin-bottom:8px;
+    }
+    .task-item:last-child { margin-bottom:0; }
+    .task-dot {
+      width:8px; height:8px; border-radius:50%;
+      background:var(--accent-cyan); margin-top:6px; flex-shrink:0;
+      box-shadow:0 0 6px var(--accent-cyan);
+    }
+    .task-item-title {
+      font-size:0.9rem; font-weight:600; color:var(--text-primary);
+      margin-bottom:3px;
+    }
+    .task-item-desc {
+      font-size:0.82rem; color:var(--text-secondary); line-height:1.5;
+    }
+  </style>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">WEEKLY SCHEDULE</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <div class="page-header-left">
+          <h1>WEEKLY SCHEDULE</h1>
+          <p>Training plan — all weeks saved permanently</p>
+        </div>
+      </div>
+
+      <!-- Week navigation -->
+      <div class="week-nav">
+        <button class="week-nav-btn" id="prevWeekBtn" onclick="changeWeek(-1)">← Previous</button>
+        <div class="week-label" id="weekLabel">Loading...</div>
+        <button class="week-nav-btn" id="nextWeekBtn" onclick="changeWeek(1)">Next →</button>
+      </div>
+
+      <!-- Days -->
+      <div id="scheduleGrid"></div>
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, getDocs, query, where } from '../js/firebase-config.js';
+  import { requireAuth, initLayout } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error();
+  initLayout(session, 'schedule', 'WEEKLY SCHEDULE');
+
+  // IST offset = UTC+5:30
+  function getNowIST() {
+    const now = new Date();
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    return new Date(utc + 5.5 * 3600000);
+  }
+
+  function getMonday(d) {
+    const date = new Date(d);
+    const day = date.getDay(); // 0=Sun
+    const diff = day === 0 ? -6 : 1 - day;
+    date.setDate(date.getDate() + diff);
+    date.setHours(0,0,0,0);
+    return date;
+  }
+
+  function formatDate(d) {
+    return d.toISOString().split('T')[0]; // YYYY-MM-DD
+  }
+
+  function formatIndian(d) {
+    return d.toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric', timeZone:'Asia/Kolkata' });
+  }
+
+  function formatDayName(d) {
+    return d.toLocaleDateString('en-IN', { weekday:'long', timeZone:'Asia/Kolkata' });
+  }
+
+  const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+  const nowIST = getNowIST();
+  const todayStr = formatDate(nowIST);
+  let currentMonday = getMonday(nowIST);
+
+  function getWeekDates(monday) {
+    return Array.from({length:7}, (_,i) => {
+      const d = new Date(monday);
+      d.setDate(d.getDate() + i);
+      return d;
+    });
+  }
+
+  function updateWeekLabel(dates) {
+    const start = formatIndian(dates[0]);
+    const end   = formatIndian(dates[6]);
+    document.getElementById('weekLabel').textContent = `${start} — ${end}`;
+  }
+
+  async function loadWeek() {
+    const dates = getWeekDates(currentMonday);
+    updateWeekLabel(dates);
+
+    // Fetch all schedule tasks for this week
+    const startStr = formatDate(dates[0]);
+    const endStr   = formatDate(dates[6]);
+    const snap = await getDocs(query(
+      collection(db, 'schedule'),
+      where('date', '>=', startStr),
+      where('date', '<=', endStr)
+    ));
+    const tasks = snap.docs.map(d => ({id:d.id,...d.data()}));
+
+    const grid = document.getElementById('scheduleGrid');
+    grid.innerHTML = '';
+
+    dates.forEach(date => {
+      const dateStr = formatDate(date);
+      const dayTasks = tasks.filter(t => t.date === dateStr)
+        .sort((a,b) => (a.createdAt||'').localeCompare(b.createdAt||''));
+      const isToday = dateStr === todayStr;
+      const dayName = formatDayName(date);
+      const dayDate = date.toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric', timeZone:'Asia/Kolkata' });
+
+      const row = document.createElement('div');
+      row.className = `day-row${isToday ? ' today' : ''}`;
+      row.innerHTML = `
+        <div class="day-label">
+          <div>
+            <div class="day-name${isToday?' today-text':''}">${dayName}</div>
+            <div class="day-date">${dayDate}</div>
+          </div>
+          ${isToday ? '<span class="today-badge">TODAY</span>' : ''}
+        </div>
+        <div class="day-tasks">
+          ${dayTasks.length === 0
+            ? '<div class="no-task">No tasks scheduled</div>'
+            : dayTasks.map(t => `
+                <div class="task-item">
+                  <div class="task-dot"></div>
+                  <div>
+                    <div class="task-item-title">${t.title}</div>
+                    ${t.description ? `<div class="task-item-desc">${t.description}</div>` : ''}
+                  </div>
+                </div>`).join('')}
+        </div>`;
+      grid.appendChild(row);
+    });
+  }
+
+  window.changeWeek = function(dir) {
+    currentMonday.setDate(currentMonday.getDate() + dir * 7);
+    loadWeek();
+  };
+
+  loadWeek();
+</script>
+</body>
+</html>

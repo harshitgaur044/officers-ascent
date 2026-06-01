@@ -73,6 +73,7 @@ export function buildSidebar(session, activePage) {
     { icon: '🧠', label: 'Quiz Center', href: `${prefix}pages/quiz.html`, key: 'quiz' },
     { icon: '🏆', label: 'Leaderboard', href: `${prefix}pages/leaderboard.html`, key: 'leaderboard' },
     { icon: '📚', label: 'Study Materials', href: `${prefix}pages/study.html`, key: 'study' },
+    { icon: '📅', label: 'Weekly Schedule', href: `${prefix}pages/schedule.html`, key: 'schedule' },
     { icon: '👤', label: 'My Profile', href: `${prefix}pages/profile.html`, key: 'profile' },
   ];
 
@@ -80,10 +81,12 @@ export function buildSidebar(session, activePage) {
     { icon: '⚡', label: 'Admin Dashboard', href: `${prefix}pages/admin/admin-dashboard.html`, key: 'admin-dashboard' },
     { icon: '👥', label: 'Manage Members', href: `${prefix}pages/admin/manage-members.html`, key: 'manage-members' },
     { icon: '📌', label: 'Manage Tasks', href: `${prefix}pages/admin/manage-tasks.html`, key: 'manage-tasks' },
+    { icon: '📅', label: 'Manage Schedule', href: `${prefix}pages/admin/manage-schedule.html`, key: 'manage-schedule' },
     { icon: '🧠', label: 'Manage Quizzes', href: `${prefix}pages/admin/manage-quizzes.html`, key: 'manage-quizzes' },
     { icon: '📚', label: 'Study Materials', href: `${prefix}pages/admin/manage-study.html`, key: 'manage-study' },
     { icon: '📊', label: 'Analytics', href: `${prefix}pages/admin/analytics.html`, key: 'analytics' },
     { icon: '⚙️', label: 'Settings', href: `${prefix}pages/admin/settings.html`, key: 'settings' },
+    { icon: '📅', label: 'View Schedule', href: `${prefix}pages/schedule.html`, key: 'schedule' },
     { icon: '🏠', label: 'View Site', href: `${prefix}pages/dashboard.html`, key: 'view-site' },
   ];
 
