@@ -403,7 +403,9 @@
           <a href="evaluations.html" class="quick-nav-card"><span class="quick-nav-icon">⚔️</span><span class="quick-nav-label">Evaluations</span></a>
           <a href="quiz.html" class="quick-nav-card"><span class="quick-nav-icon">🧠</span><span class="quick-nav-label">Quiz Center</span></a>
           <a href="leaderboard.html" class="quick-nav-card"><span class="quick-nav-icon">🏆</span><span class="quick-nav-label">Leaderboard</span></a>
+          <a href="analytics.html" class="quick-nav-card"><span class="quick-nav-icon">📈</span><span class="quick-nav-label">Analytics</span></a>
           <a href="attendance.html" class="quick-nav-card"><span class="quick-nav-icon">📋</span><span class="quick-nav-label">Attendance</span></a>
+          <a href="schedule.html" class="quick-nav-card"><span class="quick-nav-icon">📅</span><span class="quick-nav-label">Schedule</span></a>
         </div>
       </div>
 
@@ -649,26 +651,21 @@
 
   // ── SCHEDULE WIDGET ──
   async function loadScheduleWidget() {
-   function getTodayIST() {
-      return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    function getNowIST() {
+      const now = new Date();
+      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+      return new Date(utc + 5.5 * 3600000);
     }
-    function getMonday(dateStr) {
-      const [y, m, d] = dateStr.split('-').map(Number);
-      const date = new Date(y, m - 1, d);
-      const day = date.getDay();
+    function getMonday(d) {
+      const date = new Date(d); const day = date.getDay();
       const diff = day === 0 ? -6 : 1 - day;
-      date.setDate(date.getDate() + diff);
-      return date;
+      date.setDate(date.getDate() + diff); date.setHours(0,0,0,0); return date;
     }
-    function fmt(d) {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
-    }
+    function fmt(d) { return d.toISOString().split('T')[0]; }
 
-    const todayStr = getTodayIST();
-    const monday = getMonday(todayStr);
+    const nowIST = getNowIST();
+    const todayStr = fmt(nowIST);
+    const monday = getMonday(nowIST);
     const dates = Array.from({length:7}, (_,i) => { const d=new Date(monday); d.setDate(d.getDate()+i); return d; });
     const startStr = fmt(dates[0]), endStr = fmt(dates[6]);
 

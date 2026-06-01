@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analytics — The Officer's Ascent</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .section-title {
+      font-family:'Orbitron',monospace; font-size:0.75rem; letter-spacing:3px;
+      color:var(--accent-cyan); text-transform:uppercase; margin-bottom:20px;
+      padding-bottom:10px; border-bottom:1px solid var(--border-glow);
+    }
+    .section-title.gold { color:var(--accent-gold); }
+    .section-title.green { color:var(--accent-green); }
+
+    .metric-row {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.04);
+      gap:12px;
+    }
+    .metric-row:last-child { border-bottom:none; }
+    .metric-label { font-size:0.88rem; color:var(--text-secondary); }
+    .metric-val { font-family:'Orbitron',monospace; font-size:0.95rem; color:var(--accent-green); font-weight:700; }
+
+    .member-bar-row {
+      display:flex; align-items:center; gap:12px; margin-bottom:10px;
+    }
+    .member-bar-name {
+      width:120px; font-size:0.82rem; color:var(--text-secondary);
+      flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .member-bar-name.you { color:var(--accent-green); font-weight:700; }
+    .bar-track {
+      flex:1; height:10px; background:rgba(255,255,255,0.05);
+      border-radius:5px; overflow:hidden; position:relative;
+    }
+    .bar-fill {
+      height:100%; border-radius:5px;
+      background:linear-gradient(90deg,var(--accent-cyan),var(--accent-green));
+      transition:width 1s ease;
+    }
+    .bar-fill.you {
+      background:linear-gradient(90deg,var(--accent-green),#00ffaa);
+      box-shadow:0 0 8px rgba(0,255,136,0.4);
+    }
+    .bar-score {
+      width:36px; text-align:right; font-family:'Orbitron',monospace;
+      font-size:0.78rem; color:var(--text-secondary); flex-shrink:0;
+    }
+
+    .insight-chip {
+      display:inline-flex; align-items:center; gap:8px;
+      background:var(--bg-secondary); border:1px solid var(--border-glow);
+      border-radius:8px; padding:10px 14px; margin:6px; font-size:0.85rem;
+    }
+    .insight-chip.positive { border-color:rgba(0,255,136,0.3); color:var(--accent-green); }
+    .insight-chip.warning  { border-color:rgba(255,215,0,0.3);  color:var(--accent-gold);  }
+    .insight-chip.info     { border-color:rgba(0,180,255,0.3);  color:var(--accent-cyan);  }
+
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+
+    .your-rank-badge {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:48px; height:48px; border-radius:50%;
+      font-family:'Orbitron',monospace; font-size:1.2rem; font-weight:700;
+    }
+
+    @media(max-width:768px) {
+      .member-bar-name { width:80px; font-size:0.75rem; }
+    }
+  </style>
+</head>
+<body>
+<div id="mobileTopbar"></div>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">ANALYTICS</span>
+      <div class="topbar-right"><span class="topbar-time" id="topbarTime"></span></div>
+    </div>
+    <div class="page-content">
+
+      <div class="page-header">
+        <div class="page-header-left">
+          <h1>PERFORMANCE ANALYTICS</h1>
+          <p>Your performance + group comparison — full transparency</p>
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div id="loadingState" style="text-align:center;padding:60px;color:var(--text-muted);">
+        <div class="spinner" style="margin:0 auto 16px;"></div>
+        <div style="font-family:'Orbitron',monospace;font-size:0.8rem;letter-spacing:2px;">LOADING ANALYTICS...</div>
+      </div>
+
+      <!-- Main content (hidden until loaded) -->
+      <div id="analyticsContent" style="display:none;">
+
+        <!-- YOUR QUICK STATS -->
+        <div class="stats-grid mb-24" id="myQuickStats"></div>
+
+        <!-- TABS -->
+        <div class="tabs mb-0">
+          <button class="tab-btn active" onclick="showTab('personal')">👤 My Performance</button>
+          <button class="tab-btn" onclick="showTab('group')">👥 Group Overview</button>
+          <button class="tab-btn" onclick="showTab('compare')">📊 Compare</button>
+        </div>
+
+        <!-- ══ TAB: MY PERFORMANCE ══ -->
+        <div class="tab-content active" id="tab-personal" style="padding-top:24px;">
+
+          <!-- Insights -->
+          <div class="card mb-24">
+            <div class="section-title">💡 YOUR INSIGHTS</div>
+            <div id="insightsRow" style="display:flex;flex-wrap:wrap;margin:-6px;"></div>
+          </div>
+
+          <!-- Radar + Trait breakdown -->
+          <div class="grid-2 mb-24">
+            <div class="card">
+              <div class="section-title">🕸️ SKILL RADAR</div>
+              <div class="chart-wrapper"><canvas id="myRadarChart"></canvas></div>
+            </div>
+            <div class="card">
+              <div class="section-title">📊 TRAIT BREAKDOWN</div>
+              <div id="myTraitBars"></div>
+            </div>
+          </div>
+
+          <!-- Your score vs group avg -->
+          <div class="card mb-24">
+            <div class="section-title">⚔️ YOUR SCORE VS GROUP AVERAGE</div>
+            <div class="chart-wrapper"><canvas id="vsGroupChart"></canvas></div>
+          </div>
+
+          <!-- Task performance trend -->
+          <div class="card mb-24">
+            <div class="section-title green">📈 PERFORMANCE TREND (LAST 8 TASKS)</div>
+            <div class="chart-wrapper"><canvas id="trendChart"></canvas></div>
+          </div>
+
+          <!-- Quiz trend -->
+          <div class="card mb-24">
+            <div class="section-title">🧠 QUIZ SCORE TREND</div>
+            <div id="quizTrendWrap">
+              <div class="chart-wrapper"><canvas id="quizTrendChart"></canvas></div>
+            </div>
+          </div>
+
+          <!-- Attendance monthly -->
+          <div class="card">
+            <div class="section-title">📋 ATTENDANCE TREND</div>
+            <div class="chart-wrapper"><canvas id="attTrendChart"></canvas></div>
+          </div>
+
+        </div>
+
+        <!-- ══ TAB: GROUP OVERVIEW ══ -->
+        <div class="tab-content" id="tab-group" style="padding-top:24px;">
+
+          <!-- Overall ranking bars -->
+          <div class="card mb-24">
+            <div class="section-title">🏆 OVERALL SCORE — ALL MEMBERS</div>
+            <div id="overallBars"></div>
+          </div>
+
+          <!-- Attendance comparison -->
+          <div class="card mb-24">
+            <div class="section-title green">📋 ATTENDANCE — ALL MEMBERS</div>
+            <div id="attBars"></div>
+          </div>
+
+          <!-- Quiz comparison -->
+          <div class="card mb-24">
+            <div class="section-title">🧠 QUIZ AVERAGE — ALL MEMBERS</div>
+            <div id="quizBars"></div>
+          </div>
+
+          <!-- Evaluation activity -->
+          <div class="card">
+            <div class="section-title gold">⚔️ EVALUATION ACTIVITY</div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Evals Given</th>
+                    <th>Evals Received</th>
+                    <th>Quizzes</th>
+                    <th>Attendance</th>
+                  </tr>
+                </thead>
+                <tbody id="activityTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ══ TAB: COMPARE ══ -->
+        <div class="tab-content" id="tab-compare" style="padding-top:24px;">
+
+          <div class="card mb-24">
+            <div class="section-title">🔍 COMPARE WITH A MEMBER</div>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+              <select class="form-control" id="compareSelect" style="max-width:260px;" onchange="loadComparison()">
+                <option value="">Select a member to compare with...</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="comparisonResult"></div>
+
+        </div>
+
+      </div><!-- end analyticsContent -->
+    </div>
+  </main>
+</div>
+<div id="bottomNav"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module">
+  import { db, collection, getDocs, query, where, orderBy } from '../js/firebase-config.js';
+  import { requireAuth, initLayout, getActiveMembers, getMemberEvalAvg, getAttendancePercent, getEvalTraits, showToast } from '../js/app.js';
+
+  const session = requireAuth();
+  if (!session) throw new Error();
+  initLayout(session, 'analytics', 'ANALYTICS');
+
+  // Use logged-in member's ID — admin sees their own view too
+  const myId = session.role === 'admin' ? null : session.id;
+
+  let members = [], traits = [], allEvals = [], allAtt = [], allQuiz = [], allDates = [];
+  let memberDataMap = {};
+
+  // Chart defaults
+  const chartDefaults = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color:'#8899aa', font:{ size:11 } } } },
+    scales: {
+      x: { ticks:{ color:'#8899aa' }, grid:{ color:'rgba(255,255,255,0.04)' } },
+      y: { ticks:{ color:'#8899aa' }, grid:{ color:'rgba(255,255,255,0.04)' }, beginAtZero:true }
+    }
+  };
+
+  // ── LOAD ALL DATA ──
+  async function loadAll() {
+    members  = await getActiveMembers();
+    traits   = await getEvalTraits();
+    const [evalSnap, attSnap, quizSnap] = await Promise.all([
+      getDocs(collection(db,'evaluations')),
+      getDocs(collection(db,'attendance')),
+      getDocs(collection(db,'quiz_results'))
+    ]);
+    allEvals = evalSnap.docs.map(d=>({id:d.id,...d.data()}));
+    allAtt   = attSnap.docs.map(d=>({id:d.id,...d.data()}));
+    allQuiz  = quizSnap.docs.map(d=>({id:d.id,...d.data()}));
+    allDates = [...new Set(allAtt.map(d=>d.date))];
+
+    // Build per-member data
+    for (const m of members) {
+      const mEvals   = allEvals.filter(e=>e.evaluatedId===m.id);
+      const mAtt     = allAtt.filter(a=>a.memberId===m.id);
+      const mQuiz    = allQuiz.filter(q=>q.memberId===m.id);
+      const evalsGiven = allEvals.filter(e=>e.evaluatorId===m.id);
+
+      // Trait averages
+      const traitAvgs = {};
+      traits.forEach(t => traitAvgs[t] = 0);
+      if (mEvals.length > 0) {
+        const sums = {};
+        traits.forEach(t => sums[t]=0);
+        mEvals.forEach(e => traits.forEach(t => sums[t]+=(e.scores?.[t]||0)));
+        traits.forEach(t => traitAvgs[t] = +(sums[t]/mEvals.length).toFixed(2));
+      }
+      const totalAvg = traits.length > 0
+        ? +(traits.reduce((s,t)=>s+traitAvgs[t],0)/traits.length).toFixed(2)
+        : 0;
+
+      const attPct = allDates.length > 0
+        ? Math.round((mAtt.length/allDates.length)*100)
+        : 0;
+
+      const quizAvg = mQuiz.length > 0
+        ? Math.round(mQuiz.reduce((s,q)=>s+q.score,0)/mQuiz.length)
+        : 0;
+
+      memberDataMap[m.id] = {
+        member: m, traitAvgs, totalAvg,
+        attPct, quizAvg,
+        evalCount: mEvals.length,
+        evalsGiven: evalsGiven.length,
+        quizCount: mQuiz.length,
+        attCount: mAtt.length,
+        quizResults: mQuiz.sort((a,b)=>new Date(a.submittedAt)-new Date(b.submittedAt))
+      };
+    }
+
+    // Group averages per trait
+    const groupTraitAvg = {};
+    traits.forEach(t => {
+      const vals = members.map(m=>memberDataMap[m.id].traitAvgs[t]).filter(v=>v>0);
+      groupTraitAvg[t] = vals.length > 0 ? +(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2) : 0;
+    });
+    const groupOverallAvg = traits.length > 0
+      ? +(traits.reduce((s,t)=>s+groupTraitAvg[t],0)/traits.length).toFixed(2)
+      : 0;
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('analyticsContent').style.display = 'block';
+
+    // Populate compare dropdown
+    const sel = document.getElementById('compareSelect');
+    members.filter(m=>m.id!==myId).forEach(m => {
+      sel.innerHTML += `<option value="${m.id}">${m.name}</option>`;
+    });
+
+    renderQuickStats(groupOverallAvg, groupTraitAvg);
+    renderPersonalTab(groupTraitAvg, groupOverallAvg);
+    renderGroupTab();
+  }
+
+  // ── QUICK STATS ──
+  function renderQuickStats(groupAvg, groupTraitAvg) {
+    if (!myId) {
+      document.getElementById('myQuickStats').innerHTML = `
+        <div class="stat-card"><div class="stat-value">${members.length}</div><div class="stat-label">Active Members</div></div>
+        <div class="stat-card"><div class="stat-value gold">${allEvals.length}</div><div class="stat-label">Total Evaluations</div></div>
+        <div class="stat-card"><div class="stat-value green">${allQuiz.length}</div><div class="stat-label">Quiz Attempts</div></div>
+        <div class="stat-card"><div class="stat-value">${allDates.length}</div><div class="stat-label">Sessions Held</div></div>`;
+      return;
+    }
+    const me = memberDataMap[myId];
+    if (!me) return;
+
+    // My rank
+    const ranked = [...members].sort((a,b)=>memberDataMap[b.id].totalAvg-memberDataMap[a.id].totalAvg);
+    const myRank = ranked.findIndex(m=>m.id===myId)+1;
+
+    document.getElementById('myQuickStats').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-value">${me.totalAvg>0?me.totalAvg:'—'}</div>
+        <div class="stat-label">My Avg Score</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value gold">#${myRank}</div>
+        <div class="stat-label">My Rank</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value green">${me.attPct}%</div>
+        <div class="stat-label">My Attendance</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${me.quizAvg>0?me.quizAvg+'%':'—'}</div>
+        <div class="stat-label">Quiz Avg</div>
+      </div>`;
+  }
+
+  // ── PERSONAL TAB ──
+  function renderPersonalTab(groupTraitAvg, groupOverallAvg) {
+    if (!myId) {
+      document.getElementById('tab-personal').innerHTML = `<div class="alert alert-info">Personal analytics available for member accounts.</div>`;
+      return;
+    }
+    const me = memberDataMap[myId];
+    if (!me) return;
+
+    // Insights
+    const insights = [];
+    if (me.totalAvg > groupOverallAvg && me.totalAvg > 0)
+      insights.push({ cls:'positive', icon:'🚀', text:`Above group average (${groupOverallAvg}/10)` });
+    else if (me.totalAvg > 0)
+      insights.push({ cls:'warning', icon:'📈', text:`Below group average — keep pushing!` });
+
+    if (me.attPct >= 90)
+      insights.push({ cls:'positive', icon:'🫡', text:`Excellent attendance: ${me.attPct}%` });
+    else if (me.attPct < 70 && me.attPct > 0)
+      insights.push({ cls:'warning', icon:'⚠️', text:`Low attendance: ${me.attPct}% — aim for 90%+` });
+
+    const bestTrait = traits.length>0 ? traits.reduce((a,b)=>me.traitAvgs[a]>me.traitAvgs[b]?a:b, traits[0]) : null;
+    const weakTrait = traits.length>0 ? traits.reduce((a,b)=>me.traitAvgs[a]<me.traitAvgs[b]?a:b, traits[0]) : null;
+    if (bestTrait && me.traitAvgs[bestTrait]>0)
+      insights.push({ cls:'positive', icon:'⭐', text:`Strongest: ${bestTrait} (${me.traitAvgs[bestTrait]}/10)` });
+    if (weakTrait && bestTrait !== weakTrait && me.traitAvgs[weakTrait]>0)
+      insights.push({ cls:'info', icon:'🎯', text:`Focus area: ${weakTrait} (${me.traitAvgs[weakTrait]}/10)` });
+
+    if (me.quizCount === 0)
+      insights.push({ cls:'warning', icon:'🧠', text:'No quiz attempts yet — take a quiz!' });
+
+    document.getElementById('insightsRow').innerHTML = insights.length > 0
+      ? insights.map(i=>`<div class="insight-chip ${i.cls}"><span>${i.icon}</span>${i.text}</div>`).join('')
+      : '<div style="color:var(--text-muted);font-size:0.85rem;padding:6px;">Complete some evaluations and quizzes to see insights.</div>';
+
+    // Radar chart
+    const radarCtx = document.getElementById('myRadarChart');
+    new Chart(radarCtx, {
+      type:'radar',
+      data:{
+        labels: traits,
+        datasets:[
+          { label:'You', data:traits.map(t=>me.traitAvgs[t]), borderColor:'#00ff88', backgroundColor:'rgba(0,255,136,0.12)', pointBackgroundColor:'#00ff88', pointRadius:4 },
+          { label:'Group Avg', data:traits.map(t=>groupTraitAvg[t]), borderColor:'#00b4ff', backgroundColor:'rgba(0,180,255,0.08)', pointBackgroundColor:'#00b4ff', pointRadius:3, borderDash:[4,4] }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        scales:{ r:{ beginAtZero:true, max:10, grid:{color:'rgba(255,255,255,0.06)'}, ticks:{color:'#445566',font:{size:9},stepSize:2}, pointLabels:{color:'#8899aa',font:{size:11}} }},
+        plugins:{ legend:{ labels:{color:'#8899aa',font:{size:11}} }}
+      }
+    });
+
+    // Trait bars
+    const maxScore = 10;
+    document.getElementById('myTraitBars').innerHTML = traits.map(t => {
+      const score = me.traitAvgs[t];
+      const grp   = groupTraitAvg[t];
+      const color = score >= 7 ? 'var(--accent-green)' : score >= 5 ? 'var(--accent-cyan)' : 'var(--accent-gold)';
+      return `
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+            <span style="font-size:0.84rem;color:var(--text-secondary);">${t}</span>
+            <span style="font-family:'Orbitron',monospace;font-size:0.82rem;color:${color};">${score>0?score:'—'} <span style="color:var(--text-muted);font-size:0.72rem;">/ 10</span></span>
+          </div>
+          <div style="position:relative;height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:visible;">
+            <div style="height:100%;width:${Math.min(score*10,100)}%;background:linear-gradient(90deg,${color},${color}aa);border-radius:4px;transition:width 1s ease;"></div>
+            ${grp>0?`<div style="position:absolute;top:-3px;left:${grp*10}%;width:2px;height:14px;background:rgba(255,255,255,0.4);border-radius:1px;" title="Group avg: ${grp}"></div>`:''}
+          </div>
+          <div style="font-size:0.7rem;color:var(--text-muted);margin-top:3px;">Group avg: ${grp>0?grp:'—'}/10</div>
+        </div>`;
+    }).join('');
+
+    // You vs Group bar chart
+    new Chart(document.getElementById('vsGroupChart'), {
+      type:'bar',
+      data:{
+        labels: traits,
+        datasets:[
+          { label:'You', data:traits.map(t=>me.traitAvgs[t]), backgroundColor:'rgba(0,255,136,0.4)', borderColor:'#00ff88', borderWidth:1, borderRadius:4 },
+          { label:'Group Avg', data:traits.map(t=>groupTraitAvg[t]), backgroundColor:'rgba(0,180,255,0.25)', borderColor:'#00b4ff', borderWidth:1, borderRadius:4 }
+        ]
+      },
+      options:{ ...chartDefaults, scales:{ ...chartDefaults.scales, y:{ ...chartDefaults.scales.y, max:10 }}}
+    });
+
+    // Performance trend (avg score per task over time)
+    const myEvalsByTask = {};
+    allEvals.filter(e=>e.evaluatedId===myId).forEach(e => {
+      if (!myEvalsByTask[e.taskId]) myEvalsByTask[e.taskId] = { name:e.taskName||e.taskId, scores:[] };
+      const avg = traits.length>0 ? traits.reduce((s,t)=>s+(e.scores?.[t]||0),0)/traits.length : 0;
+      myEvalsByTask[e.taskId].scores.push(avg);
+    });
+    const taskAvgs = Object.values(myEvalsByTask).map(t=>({ name:t.name, avg:+(t.scores.reduce((a,b)=>a+b,0)/t.scores.length).toFixed(2) })).slice(-8);
+
+    if (taskAvgs.length > 1) {
+      new Chart(document.getElementById('trendChart'), {
+        type:'line',
+        data:{
+          labels: taskAvgs.map(t=>t.name),
+          datasets:[{ label:'Your Avg Score', data:taskAvgs.map(t=>t.avg), borderColor:'#00ff88', backgroundColor:'rgba(0,255,136,0.1)', pointBackgroundColor:'#00ff88', tension:0.4, fill:true }]
+        },
+        options:{ ...chartDefaults, scales:{ ...chartDefaults.scales, y:{ ...chartDefaults.scales.y, max:10 }}}
+      });
+    } else {
+      document.getElementById('trendChart').parentElement.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:20px 0;">Need at least 2 task evaluations to show trend.</div>';
+    }
+
+    // Quiz trend
+    if (me.quizResults.length > 1) {
+      new Chart(document.getElementById('quizTrendChart'), {
+        type:'line',
+        data:{
+          labels: me.quizResults.map(q=>q.quizTitle||'Quiz'),
+          datasets:[{ label:'Quiz Score %', data:me.quizResults.map(q=>q.score), borderColor:'#00b4ff', backgroundColor:'rgba(0,180,255,0.1)', pointBackgroundColor:'#00b4ff', tension:0.4, fill:true }]
+        },
+        options:{ ...chartDefaults, scales:{ ...chartDefaults.scales, y:{ ...chartDefaults.scales.y, max:100 }}}
+      });
+    } else {
+      document.getElementById('quizTrendWrap').innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:12px 0;">Need at least 2 quiz attempts to show trend.</div>';
+    }
+
+    // Attendance trend (monthly)
+    const myAttDates = allAtt.filter(a=>a.memberId===myId).map(a=>a.date).sort();
+    const months = {};
+    myAttDates.forEach(d=>{ const m=d.substring(0,7); months[m]=(months[m]||0)+1; });
+    const mLabels = Object.keys(months).sort().slice(-6);
+    const mVals   = mLabels.map(l=>months[l]);
+
+    if (mLabels.length > 0) {
+      new Chart(document.getElementById('attTrendChart'), {
+        type:'bar',
+        data:{
+          labels: mLabels.map(l=>{ const [y,m]=l.split('-'); return new Date(y,m-1).toLocaleString('default',{month:'short',year:'2-digit'}); }),
+          datasets:[{ label:'Days Present', data:mVals, backgroundColor:'rgba(0,255,136,0.3)', borderColor:'#00ff88', borderWidth:1, borderRadius:4 }]
+        },
+        options:{ ...chartDefaults }
+      });
+    } else {
+      document.getElementById('attTrendChart').parentElement.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:12px 0;">No attendance data yet.</div>';
+    }
+  }
+
+  // ── GROUP TAB ──
+  function renderGroupTab() {
+    const sorted = [...members].sort((a,b)=>memberDataMap[b.id].totalAvg-memberDataMap[a.id].totalAvg);
+    const maxOverall = Math.max(...sorted.map(m=>memberDataMap[m.id].totalAvg), 0.1);
+    const maxAtt = 100;
+    const maxQuiz = Math.max(...members.map(m=>memberDataMap[m.id].quizAvg), 1);
+
+    // Overall bars
+    document.getElementById('overallBars').innerHTML = sorted.map((m,i) => {
+      const d = memberDataMap[m.id];
+      const isMe = m.id===myId;
+      const pct = maxOverall>0 ? (d.totalAvg/maxOverall)*100 : 0;
+      const medals = ['🥇','🥈','🥉'];
+      return `
+        <div class="member-bar-row">
+          <div style="width:24px;text-align:center;flex-shrink:0;">${i<3?medals[i]:`<span style="font-family:'Orbitron',monospace;font-size:0.72rem;color:var(--text-muted);">${i+1}</span>`}</div>
+          <div class="member-bar-name ${isMe?'you':''}">${m.name.split(' ')[0]}${isMe?' (You)':''}</div>
+          <div class="bar-track"><div class="bar-fill ${isMe?'you':''}" style="width:${pct}%"></div></div>
+          <div class="bar-score">${d.totalAvg>0?d.totalAvg:'—'}</div>
+        </div>`;
+    }).join('');
+
+    // Attendance bars
+    const attSorted = [...members].sort((a,b)=>memberDataMap[b.id].attPct-memberDataMap[a.id].attPct);
+    document.getElementById('attBars').innerHTML = attSorted.map(m => {
+      const d = memberDataMap[m.id];
+      const isMe = m.id===myId;
+      const color = d.attPct>=80?'var(--accent-green)':d.attPct>=60?'var(--accent-cyan)':'var(--accent-red)';
+      return `
+        <div class="member-bar-row">
+          <div class="member-bar-name ${isMe?'you':''}">${m.name.split(' ')[0]}${isMe?' (You)':''}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${d.attPct}%;background:${color};"></div></div>
+          <div class="bar-score" style="color:${color};">${d.attPct}%</div>
+        </div>`;
+    }).join('');
+
+    // Quiz bars
+    const quizSorted = [...members].sort((a,b)=>memberDataMap[b.id].quizAvg-memberDataMap[a.id].quizAvg);
+    document.getElementById('quizBars').innerHTML = quizSorted.map(m => {
+      const d = memberDataMap[m.id];
+      const isMe = m.id===myId;
+      const pct = maxQuiz>0 ? (d.quizAvg/maxQuiz)*100 : 0;
+      return `
+        <div class="member-bar-row">
+          <div class="member-bar-name ${isMe?'you':''}">${m.name.split(' ')[0]}${isMe?' (You)':''}</div>
+          <div class="bar-track"><div class="bar-fill ${isMe?'you':''}" style="width:${pct}%"></div></div>
+          <div class="bar-score">${d.quizAvg>0?d.quizAvg+'%':'—'}</div>
+        </div>`;
+    }).join('');
+
+    // Activity table
+    document.getElementById('activityTable').innerHTML = members.map(m => {
+      const d = memberDataMap[m.id];
+      const isMe = m.id===myId;
+      return `
+        <tr style="${isMe?'background:rgba(0,255,136,0.04);':''}">
+          <td style="font-weight:600;">${m.name}${isMe?'<span class="badge badge-green" style="margin-left:8px;font-size:0.6rem;">YOU</span>':''}</td>
+          <td><span style="color:var(--accent-cyan);font-family:'Orbitron',monospace;">${d.evalsGiven}</span></td>
+          <td><span style="color:var(--accent-green);font-family:'Orbitron',monospace;">${d.evalCount}</span></td>
+          <td>${d.quizCount}</td>
+          <td><span style="color:${d.attPct>=80?'var(--accent-green)':d.attPct>=60?'var(--accent-cyan)':'var(--accent-red)'};">${d.attPct}%</span></td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ── COMPARE TAB ──
+  window.loadComparison = function() {
+    const compareId = document.getElementById('compareSelect').value;
+    if (!compareId || !myId) return;
+    const me  = memberDataMap[myId];
+    const them = memberDataMap[compareId];
+    if (!me || !them) return;
+
+    const result = document.getElementById('comparisonResult');
+    result.innerHTML = `
+      <div class="grid-2 mb-24">
+        <div class="card" style="border-color:rgba(0,255,136,0.3);">
+          <div style="text-align:center;margin-bottom:16px;">
+            <div style="font-size:2.5rem;margin-bottom:8px;">${me.member.profilePic?`<img src="${me.member.profilePic}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid var(--accent-green);">`:'🪖'}</div>
+            <div style="font-family:'Orbitron',monospace;font-size:0.85rem;color:var(--accent-green);">YOU</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);">${me.member.name}</div>
+          </div>
+          ${renderCompareStats(me)}
+        </div>
+        <div class="card" style="border-color:rgba(0,180,255,0.3);">
+          <div style="text-align:center;margin-bottom:16px;">
+            <div style="font-size:2.5rem;margin-bottom:8px;">${them.member.profilePic?`<img src="${them.member.profilePic}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid var(--accent-cyan);">`:'🪖'}</div>
+            <div style="font-family:'Orbitron',monospace;font-size:0.85rem;color:var(--accent-cyan);">${them.member.name.split(' ')[0].toUpperCase()}</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);">${them.member.name}</div>
+          </div>
+          ${renderCompareStats(them)}
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-title">📊 HEAD TO HEAD — ALL TRAITS</div>
+        <div class="chart-wrapper"><canvas id="compareChart"></canvas></div>
+      </div>`;
+
+    // Head to head chart
+    setTimeout(() => {
+      new Chart(document.getElementById('compareChart'), {
+        type:'bar',
+        data:{
+          labels: traits,
+          datasets:[
+            { label:'You', data:traits.map(t=>me.traitAvgs[t]), backgroundColor:'rgba(0,255,136,0.4)', borderColor:'#00ff88', borderWidth:1, borderRadius:4 },
+            { label:them.member.name.split(' ')[0], data:traits.map(t=>them.traitAvgs[t]), backgroundColor:'rgba(0,180,255,0.3)', borderColor:'#00b4ff', borderWidth:1, borderRadius:4 }
+          ]
+        },
+        options:{ ...chartDefaults, scales:{ ...chartDefaults.scales, y:{ ...chartDefaults.scales.y, max:10 }}}
+      });
+    }, 100);
+  };
+
+  function renderCompareStats(d) {
+    return `
+      <div class="metric-row"><span class="metric-label">Overall Avg</span><span class="metric-val">${d.totalAvg>0?d.totalAvg+'/10':'No data'}</span></div>
+      <div class="metric-row"><span class="metric-label">Attendance</span><span class="metric-val">${d.attPct}%</span></div>
+      <div class="metric-row"><span class="metric-label">Quiz Avg</span><span class="metric-val">${d.quizAvg>0?d.quizAvg+'%':'No attempts'}</span></div>
+      <div class="metric-row"><span class="metric-label">Evals Received</span><span class="metric-val">${d.evalCount}</span></div>
+      ${traits.map(t=>`<div class="metric-row"><span class="metric-label">${t}</span><span class="metric-val" style="font-size:0.82rem;">${d.traitAvgs[t]>0?d.traitAvgs[t]+'/10':'—'}</span></div>`).join('')}`;
+  }
+
+  // ── TAB SWITCH ──
+  window.showTab = function(tab) {
+    document.querySelectorAll('.tab-btn').forEach((b,i) => {
+      b.classList.toggle('active', ['personal','group','compare'][i]===tab);
+    });
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+  };
+
+  loadAll();
+</script>
+</body>
+</html>

@@ -72,6 +72,7 @@ export function buildSidebar(session, activePage) {
     { icon: '⚔️', label: 'Evaluations', href: `${prefix}pages/evaluations.html`, key: 'evaluations' },
     { icon: '🧠', label: 'Quiz Center', href: `${prefix}pages/quiz.html`, key: 'quiz' },
     { icon: '🏆', label: 'Leaderboard', href: `${prefix}pages/leaderboard.html`, key: 'leaderboard' },
+    { icon: '📈', label: 'Analytics', href: `${prefix}pages/analytics.html`, key: 'analytics' },
     { icon: '📚', label: 'Study Materials', href: `${prefix}pages/study.html`, key: 'study' },
     { icon: '📅', label: 'Weekly Schedule', href: `${prefix}pages/schedule.html`, key: 'schedule' },
     { icon: '👤', label: 'My Profile', href: `${prefix}pages/profile.html`, key: 'profile' },
@@ -140,7 +141,7 @@ export function buildBottomNav(activePage, isAdmin) {
     { icon: '🏠', label: 'Home', href: 'dashboard.html', key: 'dashboard' },
     { icon: '👥', label: 'Members', href: 'members.html', key: 'members' },
     { icon: '⚔️', label: 'Eval', href: 'evaluations.html', key: 'evaluations' },
-    { icon: '🏆', label: 'Ranks', href: 'leaderboard.html', key: 'leaderboard' },
+    { icon: '📈', label: 'Analytics', href: 'analytics.html', key: 'analytics' },
     { icon: '👤', label: 'Profile', href: 'profile.html', key: 'profile' },
   ];
 
