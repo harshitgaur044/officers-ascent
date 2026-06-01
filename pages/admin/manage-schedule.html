@@ -134,10 +134,8 @@
 
   // IST helpers
   function getNowIST() {
-    const now = new Date();
-    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-    return new Date(utc + 5.5 * 3600000);
-  }
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+}
 
   function getMonday(d) {
     const date = new Date(d);
